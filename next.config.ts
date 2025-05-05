@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Allow any HTTPS source - REMOVE or REFINE for production
+      {
+         protocol: 'https',
+         hostname: '**',
+      }
     ],
   },
 };

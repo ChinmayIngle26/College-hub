@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google'; // Using Inter font for clean look
+import { Inter } from 'next/font/google';
 import './globals.css';
-import { Header } from '@/components/layout/header';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { Sidebar } from '@/components/layout/sidebar';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -11,7 +11,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'College Hub',
+  title: 'Advanced Student ERP Dashboard',
   description: 'Your college dashboard',
 };
 
@@ -28,8 +28,15 @@ export default function RootLayout({
           inter.variable
         )}
       >
-        <Header />
-        <main className="p-4 md:p-8">{children}</main>
+        <div className="flex min-h-screen w-full">
+          <Sidebar />
+          <div className="flex flex-1 flex-col">
+            {/* Main content area will include its own header */}
+            <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10">
+              {children}
+            </main>
+          </div>
+        </div>
         <Toaster />
       </body>
     </html>
