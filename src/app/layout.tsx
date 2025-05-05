@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { Sidebar } from '@/components/layout/sidebar';
+import { AuthProvider } from '@/context/auth-context'; // Import AuthProvider
 
 const inter = Inter({
   subsets: ['latin'],
@@ -28,16 +29,18 @@ export default function RootLayout({
           inter.variable
         )}
       >
-        <div className="flex min-h-screen w-full">
-          <Sidebar />
-          <div className="flex flex-1 flex-col">
-            {/* Main content area will include its own header */}
-            <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10">
-              {children}
-            </main>
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <div className="flex min-h-screen w-full">
+            <Sidebar />
+            <div className="flex flex-1 flex-col">
+              {/* Main content area will include its own header */}
+              <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
-        <Toaster />
+          <Toaster />
+        </AuthProvider> {/* Close AuthProvider */}
       </body>
     </html>
   );
