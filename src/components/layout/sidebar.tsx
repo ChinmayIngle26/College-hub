@@ -17,11 +17,11 @@ import { Button } from '@/components/ui/button';
 
 const navigationItems = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '#', label: 'My Profile', icon: User }, // Placeholder href
-  { href: '#', label: 'Attendance', icon: CheckSquare }, // Placeholder href
-  { href: '#', label: 'Grades', icon: GraduationCap }, // Placeholder href
-  { href: '#', label: 'Appointments', icon: CalendarCheck }, // Placeholder href
-  { href: '#', label: 'Voting System', icon: Vote }, // Placeholder href
+  { href: '/profile', label: 'My Profile', icon: User },
+  { href: '/attendance', label: 'Attendance', icon: CheckSquare },
+  { href: '/grades', label: 'Grades', icon: GraduationCap },
+  { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
+  { href: '/voting', label: 'Voting System', icon: Vote },
 ];
 
 export function Sidebar() {
@@ -47,7 +47,8 @@ export function Sidebar() {
               variant="ghost"
               className={cn(
                 'w-full justify-start gap-3 rounded-lg px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                pathname === item.href && 'bg-sidebar-accent text-sidebar-accent-foreground'
+                // Match base path segment for active state
+                (pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))) && 'bg-sidebar-accent text-sidebar-accent-foreground'
               )}
             >
               <item.icon className="h-5 w-5" />
