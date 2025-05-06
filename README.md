@@ -83,14 +83,13 @@ For the admin panel to function correctly with Firestore security rules, the des
    - Go to your Firebase Console -> Firestore Database.
    - Navigate to the `users` collection.
    - Find the document corresponding to the admin user you just signed up (the document ID will be the user's UID from Firebase Authentication).
-   - In that document, find the `role` field. It will likely be set to `student` (the default during signup).
-   - **Change the value of the `role` field from `student` to `admin` and save the document.**
+   - **Add or update the `role` field in that document. Set its value to `admin` (as a string) and save the document.** If the `role` field already exists (e.g., set to `student` during signup), change it to `admin`.
 
-   This step is crucial because the Firestore security rules (`firestore.rules`) use this `role` field to grant admin-level permissions for reading/writing user data.
+   This step is crucial because the Firestore security rules (`firestore.rules`) use this `role` field to grant admin-level permissions.
 
 ### 6. Deploy Firestore Security Rules
 
-The project includes a `firestore.rules` file that defines basic security for your database (e.g., users can only read/write their own data, and admins have broader access). You need to deploy these rules to your Firebase project.
+The project includes a `firestore.rules` file that defines security for your database (e.g., users can only read/write their own data, and admins have broader access). You **MUST** deploy these rules to your Firebase project.
 
 **a. Log in to Firebase CLI:**
 ```bash
@@ -109,7 +108,8 @@ From your project root directory, run:
 ```bash
 firebase deploy --only firestore:rules
 ```
-This command reads the `firestore.rules` file (specified in `firebase.json`) and applies them to your Firestore database. **Ensure this is done *after* you have manually set the admin role for the admin user in Firestore (Step 5b) if you want the admin to have immediate access based on these rules.**
+This command reads the `firestore.rules` file (specified in `firebase.json`) and applies them to your Firestore database.
+**Crucial:** Ensure this is done **after** you have manually set the admin role for the admin user in Firestore (Step 5b) if you want the admin to have immediate access based on these rules. If rules are deployed before the admin role is set, the admin user might not have the necessary permissions.
 
 ### 7. Run the Development Server
 
@@ -134,10 +134,10 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   Restart your development server after changes to `.env.local`.
 *   **"Missing or insufficient permissions" (Firestore Error)**:
     *   This usually means your Firestore security rules are too restrictive, not deployed correctly, or the user performing the action does not have the required role (e.g., an admin action attempted by a non-admin user).
-    *   Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules`.
-    *   **Crucially, for admin functionalities, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b).**
-    *   Check the rules in `firestore.rules` to ensure they allow the operations your app is trying to perform (e.g., authenticated users writing to their own document, admins reading/writing all user documents).
-    *   Check the Firebase Console for Firestore (Data tab) to see if the data exists and if the user trying to access it has the correct UID or role as per your rules.
+    *   **1. Deploy Security Rules:** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules`. This is the most common cause.
+    *   **2. Set Admin Role:** For admin functionalities, **crucially**, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b).
+    *   **3. Check Rules Logic:** Review the rules in `firestore.rules` to confirm they grant the necessary permissions for the operations your app is trying to perform (e.g., authenticated users writing to their own document, admins reading/writing all user documents).
+    *   **4. Verify Data:** Check the Firebase Console for Firestore (Data tab) to see if the data exists and if the user trying to access it has the correct UID or role as per your rules.
 *   **Blank screen after login/redirect issues**:
     *   Check the browser console for errors.
     *   Verify the `middleware.ts` logic and ensure cookies are being set/cleared correctly if you're relying on them for auth checks in middleware.
