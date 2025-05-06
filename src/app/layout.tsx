@@ -13,17 +13,28 @@ const inter = Inter({
   variable: '--font-sans',
 });
 
+// Default values for metadata
+const DEFAULT_APP_NAME = 'College Hub';
+const DEFAULT_APP_DESCRIPTION = 'Your comprehensive college dashboard for students.';
+
 // Function to generate metadata dynamically
 export async function generateMetadata(): Promise<Metadata> {
-  let appName = 'Student ERP Dashboard'; // Default fallback title
-  let appDescription = 'Your college dashboard.'; // Default fallback description
+  let appName = DEFAULT_APP_NAME;
+  let appDescription = DEFAULT_APP_DESCRIPTION;
+
   try {
-    // This call might fail if Firestore rules are too restrictive or DB is down
+    // This call runs on the server (during build or SSR).
+    // Firestore rules MUST allow unauthenticated reads for 'systemSettings/appConfiguration'
+    // if this function is to succeed without a logged-in user context.
     const settings = await getSystemSettings();
-    appName = settings.applicationName || appName;
-    appDescription = `Access your student information and services at ${settings.applicationName || 'the college dashboard'}.`;
+    appName = settings.applicationName || DEFAULT_APP_NAME; // Use fetched or default
+    appDescription = `Access your student information and services at ${settings.applicationName || 'the College Hub'}.`;
   } catch (error) {
-    console.error("Failed to load system settings for metadata, using defaults:", error);
+    // Log the error but do not re-throw. Allow the app to build/run with default metadata.
+    // This is crucial for initial setup or if Firestore is temporarily unreachable.
+    console.warn(
+      `Warning: Failed to load system settings for metadata generation. Using default metadata. Error: ${error instanceof Error ? error.message : String(error)}`
+    );
     // Fallback to default values is already handled by initial appName/appDescription
   }
   return {

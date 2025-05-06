@@ -23,24 +23,25 @@ export interface SystemSettings {
 const defaultSettings: SystemSettings = {
   maintenanceMode: false,
   allowNewUserRegistration: true,
-  applicationName: 'Student ERP Dashboard',
-  announcementTitle: 'Welcome!',
-  announcementContent: 'This is a default announcement. Please update it in the admin settings.',
+  applicationName: 'College Hub', // Updated default name
+  announcementTitle: 'Welcome to College Hub!', // Updated default title
+  announcementContent: 'Stay tuned for important updates and announcements. You can customize this message in the admin settings.', // Updated default content
   defaultItemsPerPage: 10,
   lastUpdated: null, 
 };
 
 /**
  * Asynchronously retrieves the current system settings from Firestore.
- * If no settings document exists, it initializes default settings.
- * If Firestore is unavailable or an error occurs, it returns default settings.
+ * If no settings document exists, it attempts to initialize default settings.
+ * If Firestore is unavailable or an error occurs during fetch/initialization,
+ * it logs a warning and returns a copy of the default settings to ensure the app can proceed.
  *
  * @returns A promise that resolves to a SystemSettings object.
  */
 export async function getSystemSettings(): Promise<SystemSettings> {
   if (!db) {
-    console.warn("Firestore DB instance is not available. Returning default system settings.");
-    return { ...defaultSettings }; // Return a copy to avoid accidental modification
+    console.warn("Firestore DB instance is not available. Returning default system settings. This might occur during build or if Firebase is not initialized.");
+    return { ...defaultSettings }; // Return a copy
   }
 
   const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
@@ -49,34 +50,31 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     const docSnap = await getDoc(settingsDocRef);
 
     if (docSnap.exists()) {
-      const data = docSnap.data() as SystemSettings;
-      return { // Ensure all fields are present, falling back to defaults
-        maintenanceMode: data.maintenanceMode === undefined ? defaultSettings.maintenanceMode : data.maintenanceMode,
-        allowNewUserRegistration: data.allowNewUserRegistration === undefined ? defaultSettings.allowNewUserRegistration : data.allowNewUserRegistration,
-        applicationName: data.applicationName === undefined ? defaultSettings.applicationName : data.applicationName,
-        announcementTitle: data.announcementTitle === undefined ? defaultSettings.announcementTitle : data.announcementTitle,
-        announcementContent: data.announcementContent === undefined ? defaultSettings.announcementContent : data.announcementContent,
-        defaultItemsPerPage: data.defaultItemsPerPage === undefined ? defaultSettings.defaultItemsPerPage : data.defaultItemsPerPage,
-        lastUpdated: data.lastUpdated || null,
-      };
+      const data = docSnap.data();
+      // Merge fetched data with defaults to ensure all keys are present
+      return {
+        ...defaultSettings, // Start with defaults
+        ...data, // Override with fetched data
+        lastUpdated: data.lastUpdated instanceof Timestamp ? data.lastUpdated : null, // Ensure lastUpdated is a Timestamp or null
+      } as SystemSettings;
     } else {
-      console.log("No system settings document found. Initializing with defaults.");
-      // Attempt to initialize, but don't let this block returning defaults if it fails
+      console.log("No system settings document found in Firestore. Attempting to initialize with defaults.");
       try {
         await setDoc(settingsDocRef, {
           ...defaultSettings,
-          lastUpdated: serverTimestamp(),
+          lastUpdated: serverTimestamp(), // Use server timestamp for creation
         });
+        console.log("System settings initialized successfully in Firestore with default values.");
+        return { ...defaultSettings, lastUpdated: null }; // Return defaults (lastUpdated will be set by server)
       } catch (initError) {
-        console.error("Failed to initialize system settings in Firestore:", initError);
-        // Fall through to return defaultSettings
+        console.error("Failed to initialize system settings in Firestore. Returning default settings. Error:", initError);
+        return { ...defaultSettings }; // Return default settings if initialization fails
       }
-      return { ...defaultSettings }; // Return a copy
     }
   } catch (error) {
-    console.error("Error fetching or initializing system settings:", error);
-    // Return default settings on any error to allow app to continue (e.g., for metadata)
-    return { ...defaultSettings }; // Return a copy
+    console.error("Error fetching system settings from Firestore. Returning default settings. This might be due to Firestore rules or connectivity. Error:", error);
+    // Return default settings on any other error to allow app to continue (e.g., for metadata)
+    return { ...defaultSettings };
   }
 }
 
@@ -100,28 +98,19 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
       ...settingsToUpdate,
       lastUpdated: serverTimestamp(),
     };
-    await updateDoc(settingsDocRef, dataToUpdate);
-    console.log("System settings updated successfully.");
+    // Use setDoc with merge: true to handle creation if document doesn't exist, or update if it does.
+    // This is generally safer than updateDoc which fails if the doc doesn't exist.
+    await setDoc(settingsDocRef, dataToUpdate, { merge: true });
+    console.log("System settings updated/created successfully.");
   } catch (error) {
-    console.error("Error updating system settings:", error);
-    // Check if the document might not exist
-    if ((error as any).code === 'not-found' || (error as any).message?.includes('No document to update')) {
-        console.log("Settings document not found for update, attempting to create it with provided and default values.");
-        try {
-            await setDoc(settingsDocRef, {
-                ...defaultSettings, // Start with defaults
-                ...settingsToUpdate, // Override with user-provided settings
-                lastUpdated: serverTimestamp(),
-            });
-            console.log("System settings document created and updated successfully.");
-            return; // Successfully created and updated
-        } catch (createError) {
-            console.error("Error creating system settings document during update attempt:", createError);
-            throw new Error("Failed to update system settings (create attempt failed). Ensure Firestore rules allow creating 'systemSettings/appConfiguration' for admins.");
+    console.error("Error updating/creating system settings:", error);
+    // Provide a more specific error message based on common Firestore error codes if possible
+    if (error instanceof Error && 'code' in error) {
+        const firebaseError = error as { code: string; message: string };
+        if (firebaseError.code === 'permission-denied') {
+            throw new Error("Permission denied when updating system settings. Ensure admin has correct Firestore permissions for 'systemSettings/appConfiguration'.");
         }
     }
-    // For other errors, throw a generic message
-    throw new Error("Failed to update system settings. Ensure Firestore rules allow writing to 'systemSettings/appConfiguration' for admins.");
+    throw new Error("Failed to update system settings. Check Firestore rules and ensure admin privileges.");
   }
 }
-

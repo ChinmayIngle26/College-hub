@@ -1,85 +1,59 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if the authenticated user is an admin
-    function isAdmin() {
-      // Admin if the user's email is the admin email OR if their user document has role 'admin'
-      return request.auth.token.email == "admin@gmail.com" ||
-             (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin");
-    }
-
-    // Rules for the 'users' collection
+    // User Profiles
     match /users/{userId} {
-      // READ (get a single document):
-      // - User can read their own profile.
-      // - Admin can read any user's profile.
-      allow get: if request.auth != null && (request.auth.uid == userId || isAdmin());
-
-      // LIST (for admin to fetch all users):
-      // - Admin can list all user documents.
-      allow list: if request.auth != null && isAdmin();
-
-      // CREATE:
-      // - Authenticated user can create their OWN user document (e.g., during signup).
-      //   Ensure they can only set their role to 'student' or not set it if backend defaults.
-      // - Admin can create any user document.
-      allow create: if request.auth != null && (
-                      (request.auth.uid == userId && 
-                       (!('role' in request.resource.data) || request.resource.data.role == 'student') &&
-                       // User should not be able to assign themselves as admin during signup
-                       (request.resource.data.email != "admin@gmail.com") 
-                      ) || 
-                      isAdmin()
-                    );
+      // Allow user to create their own profile document (e.g., on signup)
+      // User can set their own initial data, including role (which should default to 'student' on client)
+      allow create: if request.auth != null && request.auth.uid == userId;
       
-      // UPDATE:
-      // - User can update their own profile.
-      // - Admin can update any user's profile.
-      // Ensure a user cannot make themselves an admin unless they are already an admin.
-      allow update: if request.auth != null && (
-                      (request.auth.uid == userId && 
-                        (!('role' in request.resource.data) || request.resource.data.role == get(/databases/$(database)/documents/users/$(userId)).data.role || request.resource.data.role == 'student') && // User can only set their role to student or keep existing
-                        (get(/databases/$(database)/documents/users/$(userId)).data.role != 'admin' || request.resource.data.role == 'admin') // if user is admin, can only set role to admin
-                      ) || 
-                      isAdmin()
-                    );
+      // Allow user to read their own profile
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow user to update their own profile
+      // Consider restricting which fields they can update if necessary
+      allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow user to delete their own profile (less common, implement with caution)
+      // allow delete: if request.auth != null && request.auth.uid == userId;
 
-      // DELETE:
-      // - Only admin can delete user profiles.
-      allow delete: if request.auth != null && isAdmin();
+      // Admin access to user profiles
+      // Admin can list all user documents if their email is admin@gmail.com OR their custom claim/document role is 'admin'
+      allow list: if request.auth != null && 
+                      (request.auth.token.email == "admin@gmail.com" || 
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      
+      // Admin can read any user document
+      allow get: if request.auth != null && 
+                     (request.auth.token.email == "admin@gmail.com" || 
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
 
-      // Disallow access to any subcollections under /users/{userId}
-      match /{document=**} {
-        allow read, write: if false;
-      }
+      // Admin can create, update, or delete any user document
+      allow write: if request.auth != null && 
+                      (request.auth.token.email == "admin@gmail.com" || 
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
-    // Rules for the 'systemSettings' collection
-    // This collection should have a single document, e.g., 'appConfiguration'
-    match /systemSettings/{docId} {
-      // READ:
-      // - Allow ANYONE (authenticated or not) to read settings.
-      // This is crucial for generateMetadata in layout.tsx which runs on the server
-      // and may not have an authenticated user context for every request.
-      allow get: if true; // Public read access for settings
-      allow list: if true; // Public list access for settings
-
-      // WRITE (create, update, delete):
-      // - Only Admin can write to system settings.
-      allow write: if request.auth != null && isAdmin();
-
-      // Disallow access to any subcollections under /systemSettings/{docId}
-      match /{document=**} {
-        allow read, write: if false;
-      }
+    // System Settings
+    // The 'appConfiguration' document under 'systemSettings' should be publicly readable
+    // for metadata generation (e.g., in layout.tsx), but writable only by admin.
+    match /systemSettings/appConfiguration {
+      allow read: if true; // Publicly readable for application name, etc.
+      allow write: if request.auth != null && 
+                       (request.auth.token.email == "admin@gmail.com" || 
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
-    // Fallback/Default security rules for any other collections not explicitly defined
-    // Deny all by default for unspecified paths to maintain security.
-    match /{path=**}/documents/{document} {
+    // Deny direct access to other documents in systemSettings unless specified
+    match /systemSettings/{otherDocId} {
+        allow read, write: if false;
+    }
+
+    // Default deny for any other paths not explicitly matched
+    match /{document=**} {
       allow read, write: if false;
     }
   }
