@@ -11,8 +11,8 @@ import {
   Vote,
   LogOut,
   School, // Using School icon as placeholder for college logo
-  // UserCog, // Icon for Admin - Removed
-  LogIn, // Icon for Sign In
+  Users,
+  Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -21,14 +21,11 @@ import { auth } from '@/lib/firebase/client'; // Import auth
 import { signOut } from 'firebase/auth'; // Import signOut
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 
-const navigationItems = [
+const adminNavigationItems = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/profile', label: 'My Profile', icon: User },
-  { href: '/attendance', label: 'Attendance', icon: CheckSquare },
-  { href: '/grades', label: 'Grades', icon: GraduationCap },
-  { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
-  { href: '/voting', label: 'Voting System', icon: Vote },
-  // { href: '/admin', label: 'Admin Panel', icon: UserCog }, // Removed Admin link
+  { href: '/admin', label: 'User Management', icon: Users },
+  { href: '/admin/settings', label: 'System Settings', icon: Settings }, // Example admin settings page
+  // Add other admin-specific links here
 ];
 
 // Helper function to delete a cookie
@@ -39,7 +36,7 @@ function deleteCookie(name: string) {
 }
 
 
-export function Sidebar() {
+export function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading } = useAuth(); // Get user and loading state
   const router = useRouter(); // Get router instance
@@ -88,13 +85,13 @@ export function Sidebar() {
           
           
             AISSMS
-            College of Engineering
+            Admin Panel
           
         
       
 
       
-        {navigationItems.map((item) => (
+        {adminNavigationItems.map((item) => (
           
             
               
@@ -116,7 +113,7 @@ export function Sidebar() {
             
           
         ) : (
-          // Show Sign In if user is not logged in
+          // Should ideally not happen since middleware redirects unauth users, but good to have
           
              
               
@@ -126,6 +123,9 @@ export function Sidebar() {
             
           
         )}
+      
+      
+        {children}
       
     
   );

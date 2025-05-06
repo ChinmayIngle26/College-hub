@@ -1,19 +1,44 @@
+
 import { Sidebar } from '@/components/layout/sidebar';
+import { useAuth } from '@/context/auth-context';
+import { useEffect, useState } from 'react';
+import { AdminLayout } from '@/components/layout/admin-layout';
 
 export default function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { user, loading } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!loading && user?.email === 'admin@gmail.com') {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+    }
+  }, [user, loading]);
+
+  if (isAdmin) {
+    return (
+      
+        <AdminLayout>{children}</AdminLayout>
+      
+    );
+  }
+
   return (
-    <div className="flex min-h-screen w-full">
-      <Sidebar />
-      <div className="flex flex-1 flex-col">
-        {/* Main content area will include its own header (within child pages/layouts) */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10">
-          {children}
-        </main>
-      </div>
-    </div>
+    
+      
+        <Sidebar />
+        
+          {/* Main content area will include its own header (within child pages/layouts) */}
+          
+            {children}
+          
+        
+      
+    
   );
 }

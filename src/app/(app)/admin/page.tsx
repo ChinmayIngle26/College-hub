@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -6,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { db } from '@/lib/firebase/client';
 import { doc, getDoc, collection, getDocs, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { UserPlus, Users, Settings, ShieldAlert, Edit, Trash2 } from 'lucide-react';
@@ -182,155 +180,146 @@ export default function AdminPage() {
 
   if (authLoading || checkingRole) {
     return (
-      <>
-        <MainHeader />
-        <div className="space-y-6 p-6 md:p-8 lg:p-10">
-          <Skeleton className="h-8 w-48" />
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-40 w-full" />
-          </div>
-        </div>
-      </>
+      
+        
+          
+          
+            
+            
+            
+          
+        
+      
     );
   }
 
   if (!isAdmin) {
     return (
-      <>
-        <MainHeader />
-        <div className="flex flex-col items-center justify-center space-y-4 p-10 text-center">
-          <ShieldAlert className="h-16 w-16 text-destructive" />
-          <h2 className="text-2xl font-bold">Access Denied</h2>
-          <p className="text-muted-foreground">You do not have permission to view this page.</p>
-          <Button onClick={() => router.push('/')}>Go to Dashboard</Button>
-        </div>
-      </>
+      
+        
+          
+          Access Denied
+          You do not have permission to view this page.
+          Go to Dashboard
+        
+      
     );
   }
 
   return (
-    <>
-      <MainHeader />
-      <div className="space-y-6">
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-          <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
-            Admin Panel
-          </h2>
-        </div>
+    
+      
+        
+          Admin Panel
+          
+        
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
+        
+          
+            
+              
+                
                 User Management
-              </CardTitle>
-              <CardDescription>View, add, edit, or remove users.</CardDescription>
-            </CardHeader>
-            <CardContent>
+              
+              View, add, edit, or remove users.
+            
+            
               {loadingUsers ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-8 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                </div>
+                
+                  
+                  
+                  
+                
               ) : (
                 <>
                   {usersData.length > 0 ? (
-                    <ul className="max-h-60 overflow-y-auto">
+                    
                       {usersData.map(u => (
-                        <li key={u.id} className="flex items-center justify-between py-2 border-b">
-                          <div className="flex flex-col">
-                            <span className="font-medium">{u.name || 'N/A'}</span>
-                            <span className="text-sm text-muted-foreground">{u.email || 'N/A'}</span>
-                          </div>
-                          <div>
-                            <Button variant="ghost" size="icon" onClick={() => toast({ title: "Info", description: "Edit functionality not implemented." })}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/90" onClick={() => handleDeleteUser(u.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </li>
+                        
+                          
+                            
+                              {u.name || 'N/A'}
+                            
+                            {u.email || 'N/A'}
+                          
+                          
+                            
+                              
+                            
+                            
+                              
+                            
+                          
+                        
                       ))}
-                    </ul>
+                    
                   ) : (
-                    <p className="text-muted-foreground text-center py-4">No users found.</p>
+                    No users found.
                   )}
 
-                  <div className="mt-6 pt-4 border-t">
-                    <h4 className="text-md font-semibold mb-3">Add New User</h4>
-                    <div className="space-y-3">
-                      <Input
-                        type="text"
-                        placeholder="Name"
-                        value={newUser.name}
-                        onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                        className="mb-2" // Added margin
-                      />
-                      <Input
-                        type="text"
-                        placeholder="Student ID"
-                        value={newUser.studentId}
-                        onChange={(e) => setNewUser({ ...newUser, studentId: e.target.value })}
-                        className="mb-2" // Added margin
-                      />
-                      <Input
-                        type="text"
-                        placeholder="Major"
-                        value={newUser.major}
-                        onChange={(e) => setNewUser({ ...newUser, major: e.target.value })}
-                        className="mb-2" // Added margin
-                      />
-                      <Input
-                        type="email"
-                        placeholder="Email"
-                        value={newUser.email}
-                        onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                        className="mb-2" // Added margin
-                      />
-                      <Button onClick={handleCreateUser} className="w-full mt-2">
-                         <UserPlus className="mr-2 h-4 w-4" /> Create User
-                      </Button>
-                    </div>
-                  </div>
+                  
+                    
+                       Add New User
+                      
+                      
+                        
+                          
+                          
+                        
+                        
+                          
+                          
+                        
+                        
+                          
+                          
+                        
+                        
+                          
+                          
+                        
+                        
+                           Create User
+                        
+                      
+                    
+                  
                 </>
               )}
-            </CardContent>
-          </Card>
+            
+          
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-primary" />
+          
+            
+              
                 System Settings
-              </CardTitle>
-              <CardDescription>Configure application settings.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" className="w-full" onClick={() => toast({ title: "Info", description: "Settings configuration not implemented." })}>
+              
+              Configure application settings.
+            
+            
+              
                 Configure Settings
-              </Button>
-            </CardContent>
-          </Card>
+              
+            
+          
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Content Management</CardTitle>
-              <CardDescription>Manage announcements, calendar, etc.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" className="w-full" onClick={() => toast({ title: "Info", description: "Content management not implemented." })}>
+          
+            
+              Content Management
+            
+            Manage announcements, calendar, etc.
+          
+          
+            
+              
                 Manage Content
-              </Button>
-            </CardContent>
-          </Card>
+              
+            
+          
 
-        </div>
-      </div>
-    </>
+        
+      
+    
   );
 }
+
