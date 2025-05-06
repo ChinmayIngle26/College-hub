@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { Sidebar } from '@/components/layout/sidebar';
+// Removed Sidebar import as it's moved to the app-specific layout
 import { AuthProvider } from '@/context/auth-context'; // Import AuthProvider
 
 const inter = Inter({
@@ -30,15 +30,8 @@ export default function RootLayout({
         )}
       >
         <AuthProvider> {/* Wrap with AuthProvider */}
-          <div className="flex min-h-screen w-full">
-            <Sidebar />
-            <div className="flex flex-1 flex-col">
-              {/* Main content area will include its own header */}
-              <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-10">
-                {children}
-              </main>
-            </div>
-          </div>
+          {/* Removed the main layout div structure and Sidebar */}
+          {children}
           <Toaster />
         </AuthProvider> {/* Close AuthProvider */}
       </body>

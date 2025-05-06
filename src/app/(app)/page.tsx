@@ -19,6 +19,9 @@ import type { StudentProfile } from '@/services/profile';
 import type { AttendanceRecord } from '@/services/attendance';
 import type { Grade } from '@/services/grades';
 import type { Announcement } from '@/services/announcements';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+
 
 // Interface for the complete dashboard data
 interface DashboardData {
@@ -36,9 +39,13 @@ interface DashboardData {
 const calculateGPA = (grades: Grade[]): string => {
   if (grades.length === 0) return 'N/A';
   const gradePoints: { [key: string]: number } = { 'A+': 4.0, 'A': 4.0, 'B': 3.0, 'C': 2.0, 'D': 1.0, 'F': 0.0 };
+  // Ensure grade keys are uppercase for matching
   const totalPoints = grades.reduce((sum, grade) => sum + (gradePoints[grade.grade.toUpperCase()] || 0), 0);
-  return (totalPoints / grades.length).toFixed(1);
+  const validGradesCount = grades.filter(grade => gradePoints[grade.grade.toUpperCase()] !== undefined).length;
+  if (validGradesCount === 0) return 'N/A'; // Avoid division by zero if no grades have points
+  return (totalPoints / validGradesCount).toFixed(1);
 };
+
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth(); // Get user and auth loading state
@@ -52,14 +59,34 @@ export default function DashboardPage() {
         setLoading(true);
         setError(null);
         try {
-          // Fetch data in parallel using the user's UID
-          const profilePromise = getStudentProfile(user.uid);
-          const attendancePromise = getAttendanceRecords(user.uid);
-          const gradesPromise = getGrades(user.uid);
+           // Fetch user profile data from Firestore first
+           const userDocRef = doc(db, "users", user.uid);
+           const userDocSnap = await getDoc(userDocRef);
+           let profileData: StudentProfile | null = null;
+
+           if (userDocSnap.exists()) {
+             const userData = userDocSnap.data();
+             // Construct the profile object based on Firestore data
+             profileData = {
+               name: userData.name || 'N/A', // Provide defaults
+               studentId: userData.studentId || user.uid, // Use uid as fallback studentId
+               major: userData.major || 'N/A',
+             };
+           } else {
+               console.warn(`User document not found for UID: ${user.uid}`);
+               // Set a default/fallback profile or handle as error
+               profileData = { name: 'User', studentId: user.uid, major: 'Unknown' };
+           }
+
+
+          // Fetch other data in parallel using the user's UID or relevant ID from profile
+          // Ensure the services use the correct ID (e.g., profileData.studentId if that's the key)
+          const studentIdForServices = profileData?.studentId || user.uid; // Decide which ID to use
+          const attendancePromise = getAttendanceRecords(studentIdForServices);
+          const gradesPromise = getGrades(studentIdForServices);
           const announcementsPromise = getAnnouncements(); // Announcements are likely global
 
-          const [profile, attendanceRecords, grades, announcements] = await Promise.all([
-            profilePromise,
+          const [attendanceRecords, grades, announcements] = await Promise.all([
             attendancePromise,
             gradesPromise,
             announcementsPromise,
@@ -80,7 +107,7 @@ export default function DashboardPage() {
           const activeGatePasses = 1;
 
           setData({
-            profile,
+            profile: profileData, // Use the profile data fetched from Firestore
             attendanceRecords,
             grades,
             announcements,
@@ -98,14 +125,14 @@ export default function DashboardPage() {
       };
       fetchData();
     } else if (!authLoading && !user) {
-      // Handle case where user is not logged in but somehow reached the page
-      // This might happen briefly before middleware redirects
+      // User is not logged in, loading is complete. Middleware should handle redirect.
       setLoading(false);
-      // Optionally redirect or show a message
-      console.log("User not logged in, cannot load dashboard.");
+      console.log("User not logged in, dashboard won't load.");
+      // No need to show an error here, middleware should redirect away.
     }
   }, [user, authLoading]); // Re-run effect when user or authLoading changes
 
+  // Combined Loading State
   if (loading || authLoading) {
     // Show loading skeletons while fetching data or waiting for auth state
     return (
@@ -127,7 +154,7 @@ export default function DashboardPage() {
                     <Skeleton className="h-72 w-full" />
                 </div>
                 <div className="lg:col-span-1">
-                     <Skeleton className="h-[590px] w-full" />
+                     <Skeleton className="h-[590px] w-full" /> {/* Adjusted height based on AnnouncementsCard */}
                 </div>
             </div>
         </div>
@@ -135,27 +162,33 @@ export default function DashboardPage() {
     );
   }
 
+   // Error State
   if (error) {
-      // Show error message if fetching failed
       return (
           <>
               <MainHeader />
-              <div className="flex h-[calc(100vh-100px)] items-center justify-center">
+              <div className="flex h-[calc(100vh-150px)] items-center justify-center"> {/* Adjusted height */}
                   <p className="text-destructive">{error}</p>
               </div>
           </>
       )
   }
 
-
-  if (!data || !data.profile) {
-    // Handle case where data fetching completed but resulted in null (e.g., profile not found)
-    // Or if the user is somehow null after loading finishes
+   // No User or Data State (after loading)
+   // This state might be hit briefly if auth resolves to null before middleware redirects,
+   // or if Firestore data is missing critical pieces.
+   if (!user || !data || !data.profile) {
      return (
           <>
-              <MainHeader />
-              <div className="flex h-[calc(100vh-100px)] items-center justify-center">
-                  <p className="text-muted-foreground">Could not load dashboard information.</p>
+              {/* Render header only if needed for consistency, or omit */}
+              {/* <MainHeader /> */}
+              <div className="flex h-screen items-center justify-center"> {/* Full screen centering */}
+                  {/* Avoid showing "Could not load" if user is simply not logged in */}
+                  {user ? (
+                     <p className="text-muted-foreground">Could not load dashboard information.</p>
+                  ) : (
+                     <p className="text-muted-foreground">Redirecting to sign in...</p> // Or just keep it blank
+                  )}
               </div>
           </>
       )
@@ -177,42 +210,45 @@ export default function DashboardPage() {
             title="Attendance Percentage"
             value={`${data.attendancePercentage}%`}
             icon={CheckCircle}
-            iconBgColor="bg-blue-100"
-            iconColor="text-blue-600"
+             // Specific colors matching screenshot if needed
+             // iconBgColor="bg-blue-100"
+             // iconColor="text-blue-600"
           />
           <SummaryCard
             title="GPA"
             value={data.gpa}
             icon={Award}
-            iconBgColor="bg-green-100"
-            iconColor="text-green-600"
+             // iconBgColor="bg-green-100"
+             // iconColor="text-green-600"
           />
           <SummaryCard
             title="Upcoming Appointments"
             value={data.upcomingAppointments.toString()}
             icon={CalendarClock}
-            iconBgColor="bg-yellow-100"
-            iconColor="text-yellow-600"
+             // iconBgColor="bg-yellow-100"
+             // iconColor="text-yellow-600"
           />
           <SummaryCard
             title="Active Gate Passes"
             value={data.activeGatePasses.toString()}
             icon={DoorOpen}
-            iconBgColor="bg-purple-100"
-            iconColor="text-purple-600"
+             // iconBgColor="bg-purple-100"
+             // iconColor="text-purple-600"
           />
         </div>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Attendance and Grades Charts */}
+          {/* Left Column: Attendance and Grades */}
           <div className="space-y-6 lg:col-span-2">
+            {/* Consider adding Suspense boundary if these components fetch independently */}
             <AttendanceOverviewCard attendanceRecords={data.attendanceRecords} />
             <GradesChartCard grades={data.grades} />
           </div>
 
-          {/* Announcements */}
+          {/* Right Column: Announcements */}
           <div className="lg:col-span-1">
+             {/* Consider adding Suspense boundary if this component fetches independently */}
             <AnnouncementsCard announcements={data.announcements} />
           </div>
         </div>
@@ -220,10 +256,3 @@ export default function DashboardPage() {
     </>
   );
 }
-
-
-// --- Loader Components are no longer needed here as data fetching is done in useEffect ---
-// --- If you want to keep Suspense boundaries for individual components, ---
-// --- you'd wrap the component usage (<AttendanceOverviewCard>, <GradesChartCard>, etc.) ---
-// --- within <Suspense> tags on the main page. ---
-
