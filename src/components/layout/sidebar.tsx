@@ -21,6 +21,7 @@ import { auth } from '@/lib/firebase/client';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from './theme-toggle'; // Import ThemeToggle
 
 const navigationItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -134,7 +135,8 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-2">
+        <ThemeToggle /> {/* Add ThemeToggle to the main sidebar */}
         {user ? (
           <Button
             variant="ghost"
@@ -158,3 +160,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

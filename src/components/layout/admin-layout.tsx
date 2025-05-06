@@ -17,6 +17,7 @@ import { useAuth } from '@/context/auth-context';
 import { auth } from '@/lib/firebase/client';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
+import { ThemeToggle } from './theme-toggle'; // Import ThemeToggle
 
 const adminNavigationItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -134,7 +135,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
 
-        <div className="mt-auto">
+        <div className="mt-auto space-y-2">
+           <ThemeToggle /> {/* Add ThemeToggle to admin sidebar */}
           {user ? (
           <Button
             variant="ghost"
@@ -164,3 +166,4 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

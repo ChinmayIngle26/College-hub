@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -5,6 +6,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 // Removed Sidebar import as it's moved to the app-specific layout
 import { AuthProvider } from '@/context/auth-context'; // Import AuthProvider
+import { ThemeProvider } from '@/context/theme-provider'; // Import ThemeProvider
 
 const inter = Inter({
   subsets: ['latin'],
@@ -30,11 +32,19 @@ export default function RootLayout({
         )}
       >
         <AuthProvider> {/* Wrap with AuthProvider */}
-          {/* Removed the main layout div structure and Sidebar */}
-          {children}
-          <Toaster />
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {/* Removed the main layout div structure and Sidebar */}
+            {children}
+            <Toaster />
+          </ThemeProvider>
         </AuthProvider> {/* Close AuthProvider */}
       </body>
     </html>
   );
 }
+

@@ -1,7 +1,9 @@
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, UserCircle } from 'lucide-react';
 import Image from 'next/image';
+import { ThemeToggle } from './theme-toggle'; // Import ThemeToggle
 
 export function MainHeader() {
   return (
@@ -31,6 +33,7 @@ export function MainHeader() {
             className="w-full rounded-lg bg-muted pl-8 md:w-[200px] lg:w-[300px]"
             />
         </div>
+        <ThemeToggle /> {/* Add ThemeToggle component here */}
         <Button variant="ghost" size="icon" className="rounded-full">
           <UserCircle className="h-6 w-6 text-muted-foreground" />
           <span className="sr-only">User profile</span>
@@ -53,3 +56,4 @@ export function PlaceholderLogo() {
 
 // Create a dummy file for the placeholder logo if needed for build process
 // fs.writeFileSync('public/placeholder-logo.svg', PlaceholderLogo().toString()); // Example: Run this logic if needed, e.g., in a script
+
