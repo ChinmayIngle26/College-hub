@@ -1,84 +1,67 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Function to check if the requesting user is an admin
-    // An admin is an authenticated user whose document in the 'users' collection
-    // has a 'role' field set to 'admin'.
-    function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    // Users collection
-    // /users/{userId}
+    // Users Collection
+    // Rules for individual user documents
     match /users/{userId} {
-      // Authenticated users can get their own document (e.g., for profile page, dashboard)
-      allow get: if request.auth != null && request.auth.uid == userId;
+      // Allow a user to read their own document.
+      // Also allow an admin to read any user document (needed for viewing details if implemented).
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
 
-      // Authenticated users can create their own document (e.g., during signup)
-      // and update their own document (e.g., to edit their profile).
-      allow create, update: if request.auth != null && request.auth.uid == userId;
-      // Note: 'write' is a shorthand for create, update, delete.
-      // We separate them here for clarity. 'delete' for self is usually not allowed unless explicitly needed.
+      // Allow a user to create their own document (e.g., during signup).
+      // Also allow an admin to create any user document (e.g., from admin panel).
+      // The `request.resource.data.role` check ensures that when a user creates their own doc,
+      // they can only set their role to 'student' or if the role field is not provided.
+      // Admins can set any role.
+      allow create: if request.auth != null && (
+        (request.auth.uid == userId && (request.resource.data.role == 'student' || !('role' in request.resource.data))) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
 
-      // Admins have full read (get, list) and write (create, update, delete) access to all user documents.
-      allow read, write: if isAdmin();
+      // Allow a user to update their own document, but NOT their role.
+      // Allow an admin to update any user document, INCLUDING their role.
+      allow update: if request.auth != null && (
+        (request.auth.uid == userId && !(request.resource.data.role != resource.data.role)) || // User can update, but not their own role
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'  // Admin can update anything
+      );
+
+      // Allow an admin to delete any user document.
+      // Users cannot delete their own accounts directly through this rule.
+      allow delete: if request.auth != null &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Announcements collection
-    // /announcements/{announcementId}
-    match /announcements/{announcementId} {
-      // Allow anyone (even unauthenticated users) to read announcements.
-      // Change to `if request.auth != null;` if only authenticated users should read.
-      allow read: if true;
-      // Only admins can create, update, or delete announcements.
-      allow write: if isAdmin();
+    // Rule for the entire 'users' collection (for list operations)
+    // Allow admins to list all users (e.g., for the admin panel's user table).
+    match /users/{document=**} { // This wildcard match is for collection-group queries or listing the collection.
+                                 // Firestore's `list` permission is typically what getDocs() needs on a collection.
+      allow list: if request.auth != null &&
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Placeholder rules for other collections if they were to use Firestore
-    // (Currently, services like attendance and grades use mock data)
-
-    /*
-    // Attendance:
-    // /attendance/{userId}/{recordId}
-    match /attendance/{userId}/{recordId} {
-      // Users can read and write their own attendance records
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Admins can read all attendance records
-      allow read: if isAdmin(); // Overlaps with user's own read, but fine.
-    }
-
-    // Grades:
-    // /grades/{userId}/{gradeId}
-    match /grades/{userId}/{gradeId} {
-      // Users can read and write their own grades
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Admins can read all grades
-      allow read: if isAdmin();
-    }
-
-    // Appointments:
-    // /appointments/{userId}/{appointmentId}
-    match /appointments/{userId}/{appointmentId} {
-      // Users can read and write their own appointments
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Admins might need read access depending on requirements
-      // allow read: if isAdmin();
-    }
-
-    // Voting System: Rules would be more complex
-    // Example:
-    // /elections/{electionId}
-    // match /elections/{electionId} {
-    //   allow read: if request.auth != null; // Authenticated users can view elections
-    //   allow write: if isAdmin(); // Admins manage elections
+    // If you add other collections (e.g., attendance, grades, announcements) in Firestore,
+    // you will need to add rules for them here.
+    // Example for a hypothetical 'tasks' collection where users manage their own tasks:
+    // match /tasks/{taskId} {
+    //   allow read, write: if request.auth != null && request.resource.data.userId == request.auth.uid;
     // }
-    // /elections/{electionId}/votes/{userId}
-    // match /elections/{electionId}/votes/{userId} {
-    //   // Users can create their own vote, but not read others directly or update.
-    //   allow create: if request.auth != null && request.auth.uid == userId;
+    //
+    // Example for a public 'config' document:
+    // match /app_config/settings {
+    //  allow read: if true;
+    //  allow write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     // }
-    */
+
+    // Default deny all other paths if not explicitly allowed.
+    // This is implicit but can be made explicit:
+    // match /{path=**}/documents {
+    //   allow read, write: if false;
+    // }
   }
 }
