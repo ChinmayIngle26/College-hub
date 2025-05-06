@@ -14,6 +14,7 @@ import { getFirestore } from 'firebase/firestore';
 // NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
 // NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1234567890
 // NEXT_PUBLIC_FIREBASE_APP_ID=1:1234567890:web:abcdef...
+// NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX (Optional)
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -22,53 +23,62 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
 };
 
-// Check if all required config values are present. If not, log an error.
-// This helps diagnose the 'auth/api-key-not-valid' error during development.
-if (
-  !firebaseConfig.apiKey ||
-  !firebaseConfig.authDomain ||
-  !firebaseConfig.projectId ||
-  !firebaseConfig.appId
-) {
-  console.error(
-    'Firebase configuration is missing or incomplete. Check your environment variables (NEXT_PUBLIC_FIREBASE_...). Required fields: apiKey, authDomain, projectId, appId.'
-  );
-  // You might want to throw an error here in development to make it more obvious
-  // throw new Error('Firebase configuration is missing or incomplete.');
-}
+// --- Configuration Validation ---
+const missingConfigKeys = Object.entries(firebaseConfig)
+  .filter(([key, value]) => key !== 'measurementId' && key !== 'storageBucket' && key !== 'messagingSenderId' && !value) // Only apiKey, authDomain, projectId, appId are strictly required for auth/firestore basic functionality
+  .map(([key]) => `NEXT_PUBLIC_FIREBASE_${key.replace(/([A-Z])/g, '_$1').toUpperCase()}`);
 
-
-// Initialize Firebase
 let app;
-if (!getApps().length) {
-    try {
-        app = initializeApp(firebaseConfig);
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-        // Handle the error appropriately - maybe show a message to the user
-        // or prevent Firebase-dependent features from loading.
-        // For the API key error, this catch block might not execute if the SDK throws later.
-    }
+let auth: ReturnType<typeof getAuth> | null = null;
+let db: ReturnType<typeof getFirestore> | null = null;
+
+if (missingConfigKeys.length > 0) {
+  console.error(
+    `\n--- FIREBASE CONFIG ERROR ---` +
+    `\nFirebase configuration is missing or incomplete.` +
+    `\nPlease ensure the following environment variables are set in your .env.local file and prefixed with 'NEXT_PUBLIC_':` +
+    `\n${missingConfigKeys.join('\n')}` +
+    `\n\nCommon causes:` +
+    `\n1. .env.local file is missing or in the wrong directory.` +
+    `\n2. Variables are missing the 'NEXT_PUBLIC_' prefix.` +
+    `\n3. The development server needs to be restarted after modifying .env.local.` +
+    `\n4. Incorrect variable names or values copied from Firebase console.` +
+    `\n\nFirebase services (Auth, Firestore) will NOT be initialized.` +
+    `\n---------------------------\n`
+  );
 } else {
-    app = getApp();
+  // --- Firebase Initialization ---
+  try {
+    if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+        console.log("Firebase initialized successfully.");
+    } else {
+        app = getApp();
+        console.log("Firebase app already exists.");
+    }
+
+    // Get Auth and Firestore instances ONLY if app initialization was successful
+    auth = getAuth(app);
+    db = getFirestore(app);
+
+  } catch (error: any) {
+    console.error(
+        `\n--- FIREBASE INIT FAILED ---` +
+        `\nError during Firebase initialization: ${error.message}` +
+        `\nCode: ${error.code || 'N/A'}` +
+        `\n\nCheck your Firebase project settings and the configuration values in .env.local.` +
+        `\nIs the API Key (${firebaseConfig.apiKey ? 'provided' : 'MISSING'}) correct?` +
+        `\nIs the Auth Domain (${firebaseConfig.authDomain ? 'provided' : 'MISSING'}) correct?` +
+        `\n----------------------------\n`
+        );
+    // Ensure auth and db remain null if initialization fails
+    auth = null;
+    db = null;
+  }
 }
 
-
-// Get Auth and Firestore instances
-// Use conditional checks to avoid errors if initialization failed
-const auth = app ? getAuth(app) : null;
-const db = app ? getFirestore(app) : null;
-
-// Ensure auth and db are only exported if app was initialized successfully
-// This prevents errors downstream if Firebase init fails.
-if (!auth || !db) {
-    console.error("Firebase Auth or Firestore could not be initialized. Check your configuration and initialization logic.");
-    // Depending on your app's needs, you might want to throw an error here
-    // or handle the lack of Firebase services gracefully elsewhere.
-}
-
-
+// Export potentially null values; consuming code should handle this.
 export { app, auth, db };
-

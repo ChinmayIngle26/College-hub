@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -11,7 +12,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/client'; // Correct import path
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label'; // Removed unused Label import
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
@@ -45,6 +46,19 @@ export default function SignUpPage() {
 
   const onSubmit = async (data: SignUpFormValues) => {
     setLoading(true);
+
+    // Check if Firebase was initialized correctly
+    if (!auth || !db) {
+        toast({
+            title: 'Initialization Error',
+            description: 'Firebase is not configured correctly. Please check the console and environment variables.',
+            variant: 'destructive',
+        });
+        setLoading(false);
+        return; // Stop the submission
+    }
+
+
     try {
       // Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
@@ -75,6 +89,8 @@ export default function SignUpPage() {
            description = 'Please enter a valid email address.';
        } else if (error.code === 'auth/weak-password') {
            description = 'The password is too weak. Please choose a stronger password.';
+       } else if (error.code === 'auth/api-key-not-valid') {
+           description = 'Firebase API Key is invalid. Please check your environment configuration.';
        }
       toast({
         title: 'Sign Up Failed',

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -10,7 +11,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client'; // Correct import path
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label'; // Removed unused Label import
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +38,18 @@ export default function SignInPage() {
 
   const onSubmit = async (data: SignInFormValues) => {
     setLoading(true);
+
+    // Check if Firebase Auth was initialized correctly
+    if (!auth) {
+        toast({
+            title: 'Initialization Error',
+            description: 'Firebase Auth is not configured correctly. Please check the console and environment variables.',
+            variant: 'destructive',
+        });
+        setLoading(false);
+        return; // Stop the submission
+    }
+
     try {
       await signInWithEmailAndPassword(auth, data.email, data.password);
       toast({
@@ -52,7 +65,9 @@ export default function SignInPage() {
         description = 'Invalid email or password.';
       } else if (error.code === 'auth/invalid-email') {
         description = 'Please enter a valid email address.';
-      }
+      } else if (error.code === 'auth/api-key-not-valid') {
+           description = 'Firebase API Key is invalid. Please check your environment configuration.';
+       }
       toast({
         title: 'Sign In Failed',
         description: description,
