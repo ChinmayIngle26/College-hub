@@ -15,10 +15,20 @@ export interface SystemSettings {
   announcementTitle: string;
   announcementContent: string;
   defaultItemsPerPage: number; // New setting
-  lastUpdated?: Timestamp; // Firestore Timestamp for server-side updates
+  lastUpdated?: Timestamp | null; // Firestore Timestamp for server-side updates
   // Add other settings fields here as needed
   // e.g., defaultTheme?: 'light' | 'dark' | 'system';
 }
+
+const defaultSettings: SystemSettings = {
+  maintenanceMode: false,
+  allowNewUserRegistration: true,
+  applicationName: 'Student ERP Dashboard',
+  announcementTitle: 'Welcome!',
+  announcementContent: 'This is a default announcement. Please update it in the admin settings.',
+  defaultItemsPerPage: 10,
+  lastUpdated: null, // Initialize to null
+};
 
 /**
  * Asynchronously retrieves the current system settings from Firestore.
@@ -30,15 +40,7 @@ export interface SystemSettings {
 export async function getSystemSettings(): Promise<SystemSettings> {
   if (!db) {
     console.error("Firestore DB instance is not available for system settings.");
-    return { // Return default object instead of throwing error
-      maintenanceMode: false,
-      allowNewUserRegistration: true,
-      applicationName: 'Student ERP Dashboard',
-      announcementTitle: 'Welcome!',
-      announcementContent: 'This is a default announcement. Please update it in the admin settings.',
-      defaultItemsPerPage: 10,
-      lastUpdated: undefined,
-    };
+    return defaultSettings;
   }
 
   const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
@@ -51,43 +53,26 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       // Ensure all fields are present, falling back to defaults if some are missing
       // This is important for when new settings are added to an existing deployment
       return {
-        maintenanceMode: data.maintenanceMode === undefined ? false : data.maintenanceMode,
-        allowNewUserRegistration: data.allowNewUserRegistration === undefined ? true : data.allowNewUserRegistration,
-        applicationName: data.applicationName === undefined ? 'Student ERP Dashboard' : data.applicationName,
-        announcementTitle: data.announcementTitle === undefined ? 'Welcome!' : data.announcementTitle,
-        announcementContent: data.announcementContent === undefined ? 'This is a default announcement. Please update it in the admin settings.' : data.announcementContent,
-        defaultItemsPerPage: data.defaultItemsPerPage === undefined ? 10 : data.defaultItemsPerPage,
-        lastUpdated: data.lastUpdated,
+        maintenanceMode: data.maintenanceMode === undefined ? defaultSettings.maintenanceMode : data.maintenanceMode,
+        allowNewUserRegistration: data.allowNewUserRegistration === undefined ? defaultSettings.allowNewUserRegistration : data.allowNewUserRegistration,
+        applicationName: data.applicationName === undefined ? defaultSettings.applicationName : data.applicationName,
+        announcementTitle: data.announcementTitle === undefined ? defaultSettings.announcementTitle : data.announcementTitle,
+        announcementContent: data.announcementContent === undefined ? defaultSettings.announcementContent : data.announcementContent,
+        defaultItemsPerPage: data.defaultItemsPerPage === undefined ? defaultSettings.defaultItemsPerPage : data.defaultItemsPerPage,
+        lastUpdated: data.lastUpdated || null, // Ensure lastUpdated is not undefined
       };
     } else {
       // Settings document doesn't exist, initialize with defaults
       console.log("No system settings document found. Initializing with defaults.");
-      const defaultSettings: SystemSettings = {
-        maintenanceMode: false,
-        allowNewUserRegistration: true,
-        applicationName: 'Student ERP Dashboard',
-        announcementTitle: 'Welcome!',
-        announcementContent: 'This is a default announcement. Please update it in the admin settings.',
-        defaultItemsPerPage: 10,
-        lastUpdated: serverTimestamp() as Timestamp, // Firestore will convert this
-      };
-      await setDoc(settingsDocRef, defaultSettings);
-      // Fetch again to get server-generated timestamp if needed, or return defaultSettings directly
-      // For simplicity, returning defaultSettings. The `lastUpdated` will be set by server.
-      // If you need the actual server timestamp immediately, you'd refetch or handle differently.
-      return { ...defaultSettings, lastUpdated: undefined }; // lastUpdated will be set but not in this immediate return
+      await setDoc(settingsDocRef, {
+        ...defaultSettings,
+        lastUpdated: serverTimestamp(), // Firestore will convert this
+      });
+      return defaultSettings;
     }
   } catch (error) {
     console.error("Error fetching or initializing system settings:", error);
-     return { // Return default object instead of throwing error
-      maintenanceMode: false,
-      allowNewUserRegistration: true,
-      applicationName: 'Student ERP Dashboard',
-      announcementTitle: 'Welcome!',
-      announcementContent: 'This is a default announcement. Please update it in the admin settings.',
-      defaultItemsPerPage: 10,
-      lastUpdated: undefined,
-    };
+    return defaultSettings;
   }
 }
 
@@ -123,17 +108,11 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
         try {
             // Attempt to create the document with the new settings
             // This assumes settingsToUpdate contains all necessary fields for a new doc or defaults are fine.
-            const fullSettingsOnCreate: SystemSettings = {
-                maintenanceMode: false, // Default
-                allowNewUserRegistration: true, // Default
-                applicationName: 'Student ERP Dashboard', // Default
-                announcementTitle: 'Welcome!',
-                announcementContent: 'This is a default announcement. Please update it in the admin settings.',
-                defaultItemsPerPage: 10, // Default
+            await setDoc(settingsDocRef, {
+                ...defaultSettings,
                 ...settingsToUpdate, // User provided settings override defaults
-                lastUpdated: serverTimestamp() as Timestamp,
-            };
-            await setDoc(settingsDocRef, fullSettingsOnCreate);
+                lastUpdated: serverTimestamp(),
+            });
             console.log("System settings document created and updated successfully.");
             return;
         } catch (createError) {
