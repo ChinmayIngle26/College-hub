@@ -156,3 +156,5 @@ The application should now be running, typically at `http://localhost:9002` (as 
 *   Refine Firestore security rules as you add more collections and features.
 *   Add error handling and loading states for all data fetching operations.
 *   Implement admin functionalities and role-based access control.
+
+```
