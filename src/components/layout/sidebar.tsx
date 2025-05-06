@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -11,7 +12,7 @@ import {
   Vote,
   LogOut,
   School, // Using School icon as placeholder for college logo
-  UserCog, // Icon for Admin
+  // UserCog, // Icon for Admin - Removed
   LogIn, // Icon for Sign In
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -28,7 +29,7 @@ const navigationItems = [
   { href: '/grades', label: 'Grades', icon: GraduationCap },
   { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
   { href: '/voting', label: 'Voting System', icon: Vote },
-  { href: '/admin', label: 'Admin Panel', icon: UserCog }, // Added Admin link
+  // { href: '/admin', label: 'Admin Panel', icon: UserCog }, // Removed Admin link
 ];
 
 // Helper function to delete a cookie

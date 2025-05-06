@@ -10,6 +10,8 @@ import type { NextRequest } from 'next/server';
 const publicRoutes = ['/signin', '/signup'];
 // Define routes that are part of the main application and require authentication
 // Routes within the (app) group are protected by default if not public.
+// The /admin route is also implicitly protected by the general rule below,
+// specific role-based access is handled within the AdminPage component itself.
 const protectedRoutePrefix = '/'; // Matches the root and anything under (app) group implicitly
 
 export async function middleware(request: NextRequest) {
