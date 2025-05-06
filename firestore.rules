@@ -4,44 +4,67 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is an admin
-    function isAdmin(userId) {
-      return exists(/databases/$(database)/documents/users/$(userId)) &&
-             get(/databases/$(database)/documents/users/$(userId)).data.role == 'admin';
+    // Helper function to check if the user is an admin
+    function isAdmin() {
+      return request.auth != null && // Ensure user is authenticated
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Rules for 'users' collection
+    // Users collection
     match /users/{userId} {
-      // Allow users to read their own profile
-      allow read: if request.auth != null && request.auth.uid == userId;
+      // Allow users to create their own document upon signup.
+      // They can only set their role to 'student' or not set it at all.
+      // The 'admin' role must be set manually in Firestore console or by an existing admin.
+      allow create: if request.auth.uid == userId &&
+                       (!('role' in request.resource.data) || request.resource.data.role == 'student');
 
-      // Allow users to create their own profile upon signup (if not admin creating it)
-      allow create: if request.auth != null && request.auth.uid == userId;
-      // Allow admins to create, update, and delete any user profile
-      allow create, update, delete: if request.auth != null && isAdmin(request.auth.uid);
+      // Allow authenticated users to read their own document.
+      // Allow admins to read any user document.
+      allow read: if request.auth.uid == userId || isAdmin();
 
-      // Allow users to update their own profile (e.g., non-critical fields)
-      // More granular control might be needed here (e.g., disallow role change by non-admin)
-      allow update: if request.auth != null && request.auth.uid == userId;
-      // Add rule for listing users (only for admins)
-      allow list: if request.auth != null && isAdmin(request.auth.uid);
+      // Allow authenticated users to update their own document,
+      // BUT they cannot change their 'role' field themselves.
+      // Admins can update any user document, including the 'role'.
+      allow update: if (request.auth.uid == userId && !('role' in request.resource.data && request.resource.data.role != resource.data.role)) || isAdmin();
+
+      // Allow admins to delete any user document.
+      // Regular users cannot delete their own accounts directly through Firestore.
+      // User account deletion should ideally be handled via Firebase Auth and a backend function
+      // that also cleans up Firestore data.
+      allow delete: if isAdmin();
     }
 
-    // Rules for 'systemSettings' collection
+    // Allow admins to list all users. Required for the admin user management table.
+    match /users/{document=**} { // This covers collection group queries or listing the collection.
+      allow list: if isAdmin();
+    }
+
+    // System Settings collection
+    // The settings are stored in a single document (e.g., 'appConfiguration').
     match /systemSettings/{settingsDocId} {
-      // Allow authenticated users to read system settings (e.g., for maintenance mode check client-side)
-      allow read: if request.auth != null;
-
-      // Allow ONLY admins to write (create/update) system settings
-      allow write: if request.auth != null && isAdmin(request.auth.uid);
-
-      // No public list access for system settings
-      allow list: if false;
+      // Only admins can read or write/update system settings.
+      allow read, write, update, create, delete: if isAdmin();
     }
 
-    // Default deny all other paths
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    // Announcements collection (Example - adjust as needed)
+    // Assuming announcements might be public to read, but only admins can manage them.
+    // match /announcements/{announcementId} {
+    //   allow read: if true; // Or `if request.auth != null;` for authenticated users only
+    //   allow list: if true; // Or `if request.auth != null;`
+    //   allow create, update, delete: if isAdmin();
+    // }
+
+    // Add rules for other collections (grades, attendance, etc.) as your application evolves.
+    // Example:
+    // match /grades/{studentId}/{gradeId} {
+    //   allow read, write: if request.auth.uid == studentId || isAdmin();
+    // }
+    // match /attendance/{studentId}/{recordId} {
+    //   allow read, write: if request.auth.uid == studentId || isAdmin();
+    // }
+
+
+    // By default, if no rule matches, access is denied.
   }
 }

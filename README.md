@@ -78,6 +78,7 @@ For the admin panel to function correctly with Firestore security rules, the des
 
 **a. Sign Up the Admin User:**
    Run the application (`npm run dev`) and sign up using the email address you've designated as the admin (e.g., `admin@gmail.com` as defined in `src/app/(app)/admin/page.tsx`). **Use a temporary password if needed, and remember it.**
+   During sign-up, the system will automatically assign the role `student` (as per `src/app/signup/page.tsx`). This will be overridden in the next step.
 
 **b. Manually Set Admin Role in Firestore:**
    - Go to your Firebase Console -> Firestore Database.
@@ -137,7 +138,7 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   **1. Deploy Security Rules (MOST COMMON FIX):** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules`. Check the Firebase Console (Firestore Database > Rules tab) to see the currently active rules.
     *   **2. Set Admin Role:** For admin functionalities, **CRUCIALLY**, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b). The document ID for this user in the `users` collection must be their Firebase Authentication UID.
     *   **3. Check Rules Logic:** Review the rules in `firestore.rules` to confirm they grant the necessary permissions for the operations your app is trying to perform. For example:
-        *   Can authenticated users create their own user document in the `users` collection upon signup?
+        *   Can authenticated users create their own user document in the `users` collection upon signup (with specific constraints, e.g., not setting their own role to 'admin')?
         *   Can authenticated users read their own user document?
         *   Can users with the 'admin' role `list` (get all documents) from the `users` collection?
         *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection?
