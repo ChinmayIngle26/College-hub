@@ -31,6 +31,14 @@ const navigationItems = [
   { href: '/admin', label: 'Admin Panel', icon: UserCog }, // Added Admin link
 ];
 
+// Helper function to delete a cookie
+function deleteCookie(name: string) {
+  if (typeof document !== 'undefined') { // Ensure document is available (client-side)
+      document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+  }
+}
+
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, loading } = useAuth(); // Get user and loading state
@@ -40,6 +48,10 @@ export function Sidebar() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+
+      // --- Clear the auth cookie ---
+      deleteCookie('firebaseAuthToken');
+
       toast({
         title: 'Logged Out',
         description: 'You have been successfully logged out.',

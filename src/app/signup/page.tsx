@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -27,6 +28,20 @@ const signUpSchema = z.object({
 });
 
 type SignUpFormValues = z.infer<typeof signUpSchema>;
+
+// Helper function to set a cookie
+function setCookie(name: string, value: string, days: number) {
+    let expires = "";
+    if (days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toUTCString();
+    }
+    if (typeof document !== 'undefined') { // Ensure document is available (client-side)
+        document.cookie = name + "=" + (value || "") + expires + "; path=/";
+    }
+}
+
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -74,6 +89,11 @@ export default function SignUpPage() {
         role: 'student' // Default role, can be changed later by admin
       });
 
+      // --- Set auth cookie on successful sign-up ---
+      const idToken = await user.getIdToken();
+      setCookie('firebaseAuthToken', idToken, 1); // Set cookie (e.g., expires in 1 day)
+
+
       toast({
         title: 'Sign Up Successful',
         description: 'Your account has been created.',
@@ -91,6 +111,8 @@ export default function SignUpPage() {
            description = 'The password is too weak. Please choose a stronger password.';
        } else if (error.code === 'auth/api-key-not-valid') {
            description = 'Firebase API Key is invalid. Please check your environment configuration.';
+        } else if (error.code === 'auth/network-request-failed') {
+            description = 'Network error. Please check your internet connection.';
        }
       toast({
         title: 'Sign Up Failed',

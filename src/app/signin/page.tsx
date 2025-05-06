@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState } from 'react';
@@ -22,6 +23,20 @@ const signInSchema = z.object({
 });
 
 type SignInFormValues = z.infer<typeof signInSchema>;
+
+// Helper function to set a cookie
+function setCookie(name: string, value: string, days: number) {
+  let expires = "";
+  if (days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    expires = "; expires=" + date.toUTCString();
+  }
+  if (typeof document !== 'undefined') { // Ensure document is available (client-side)
+      document.cookie = name + "=" + (value || "") + expires + "; path=/";
+  }
+}
+
 
 export default function SignInPage() {
   const router = useRouter();
@@ -51,7 +66,13 @@ export default function SignInPage() {
     }
 
     try {
-      await signInWithEmailAndPassword(auth, data.email, data.password);
+      const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
+      // --- Set auth cookie on successful sign-in ---
+      const idToken = await user.getIdToken();
+      setCookie('firebaseAuthToken', idToken, 1); // Set cookie (e.g., expires in 1 day)
+
       toast({
         title: 'Sign In Successful',
         description: 'Welcome back!',
@@ -67,6 +88,8 @@ export default function SignInPage() {
         description = 'Please enter a valid email address.';
       } else if (error.code === 'auth/api-key-not-valid') {
            description = 'Firebase API Key is invalid. Please check your environment configuration.';
+       } else if (error.code === 'auth/network-request-failed') {
+            description = 'Network error. Please check your internet connection.';
        }
       toast({
         title: 'Sign In Failed',
