@@ -12,9 +12,8 @@ import { Button } from '@/components/ui/button';
 import { UserPlus, Users, Settings, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Define a specific admin email (or use Firestore roles for a more robust solution)
-// For this example, we'll primarily rely on a 'role' field in Firestore.
-// const ADMIN_EMAIL = "admin@example.com"; // Example admin email
+// Define the specific admin email address
+const ADMIN_EMAIL = "admin@gmail.com";
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -32,40 +31,45 @@ export default function AdminPage() {
       return;
     }
 
-    // Check user role from Firestore
-    const checkAdminRole = async () => {
+    // Check if the user is an admin
+    const checkAdminAccess = async () => {
       setCheckingRole(true);
-      if (db && user) {
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
+      let userIsCurrentlyAdmin = false;
 
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            if (userData.role === 'admin') {
-              setIsAdmin(true);
-            } else {
-              // If user is not admin, redirect to home or show access denied
-              // For now, redirecting to home
-              router.push('/');
-            }
-          } else {
-            // User document doesn't exist, treat as non-admin
-            router.push('/');
-          }
-        } catch (error) {
-          console.error("Error fetching user role:", error);
-          // Handle error, perhaps redirect or show error message
-          router.push('/');
-        }
+      // Condition 1: User's email is the hardcoded admin email
+      if (user.email === ADMIN_EMAIL) {
+        userIsCurrentlyAdmin = true;
       } else {
-        // db or user is null, should not happen if auth checks passed
+        // Condition 2: User has 'admin' role in Firestore
+        // This check is performed only if the email doesn't match ADMIN_EMAIL
+        if (db) { // Ensure db is initialized
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDocSnap = await getDoc(userDocRef);
+
+            if (userDocSnap.exists()) {
+              const userData = userDocSnap.data();
+              if (userData.role === 'admin') {
+                userIsCurrentlyAdmin = true;
+              }
+            }
+          } catch (error) {
+            console.error("Error fetching user role:", error);
+            // Keep userIsCurrentlyAdmin as false, error means no admin role found via DB
+          }
+        }
+      }
+
+      if (userIsCurrentlyAdmin) {
+        setIsAdmin(true);
+      } else {
+        // If user is not admin by either condition, redirect
         router.push('/');
       }
       setCheckingRole(false);
     };
 
-    checkAdminRole();
+    checkAdminAccess();
 
   }, [user, authLoading, router]);
 
