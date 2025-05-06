@@ -3,52 +3,54 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Function to check if the requesting user is an admin
+    // Helper function to check if the requesting user is an admin.
+    // It reads the 'role' field from the user's own document in the 'users' collection.
     function isAdmin() {
-      // Ensure request.auth is not null before trying to access request.auth.uid
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Ensure request.auth is not null before trying to access its properties
+      return request.auth != null &&
+             // Ensure the user document exists and has a 'role' field before checking its value
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // User profiles
+    // Rules for the 'users' collection
     match /users/{userId} {
-      // Allow users to read their own profile, and admins to read any profile
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Allow authenticated users to:
+      // - Read their own profile (e.g., on dashboard, profile page).
+      // - Create their own profile document (e.g., during sign-up).
+      // - Update their own profile document.
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
 
-      // Allow users to create their own profile (e.g., during signup)
-      // Allow users to update their own profile
-      // Allow admins to create, update, or delete any user profile
-      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // More granular:
-      // allow create: if request.auth != null; // Any authenticated user can create a user document (e.g., on signup)
-      // allow update: if request.auth != null && (request.auth.uid == userId || isAdmin()); // User can update own, admin can update any
-      // allow delete: if request.auth != null && isAdmin(); // Only admins can delete
+      // Allow admin users to:
+      // - Get (read) any specific user's document.
+      // - List all user documents (for the admin panel user list).
+      // - Create new user documents (admin creating users).
+      // - Update any user's document (admin editing users - if implemented).
+      // - Delete any user's document (admin deleting users).
+      allow get, list, create, update, delete: if isAdmin();
+
+      // Note on 'write' vs specific operations:
+      // 'write' is a shorthand for 'create, update, delete'.
+      // By specifying them individually, we have clearer intent.
+      // The rules are effectively OR'd. If a user is an admin, they get full CRUD.
+      // If a user is not an admin, they only get read, create (own), update (own).
     }
 
-    // Allow admins to list all users (needed for User Management in Admin Panel)
-    match /users {
-      allow list: if request.auth != null && isAdmin();
-    }
-
-    // Announcements - Example, adjust as needed
-    match /announcements/{announcementId} {
-      // Allow any authenticated user to read announcements
-      allow read: if request.auth != null;
-      // Allow only admins to create, update, or delete announcements
-      allow write: if request.auth != null && isAdmin();
-    }
-
-    // TODO: Add rules for other collections as your application grows
-    // e.g., attendance, grades, appointments, voting
-    // Consider who should read/write this data.
-
-    // Example for a 'grades' collection (students can read own, admins can read/write all)
-    // match /grades/{studentId}/courses/{courseId} {
-    //   allow read: if request.auth != null && (request.auth.uid == studentId || isAdmin());
-    //   allow write: if request.auth != null && isAdmin(); // Assuming only admins input/edit grades
-    // }
-    // match /grades/{studentId} {
-    //   allow list: if request.auth != null && (request.auth.uid == studentId || isAdmin()); // For listing courses for a student
+    // Placeholder for future collections. If you add more collections like
+    // 'attendance', 'grades', 'announcements' directly in Firestore (not as mock data),
+    // you'll need to add rules for them.
+    // Example for a subcollection if attendance was stored under each user:
+    // match /users/{userId}/attendance/{recordId} {
+    //   // User can manage their own attendance records
+    //   allow read, write: if request.auth != null && request.auth.uid == userId;
+    //   // Admin can read anyone's attendance records
+    //   allow read: if isAdmin();
     // }
 
+    // Example for a global 'announcements' collection (if not mock):
+    // match /announcements/{announcementId} {
+    //   allow read: if request.auth != null; // All authenticated users can read
+    //   allow write: if isAdmin(); // Only admins can create/edit/delete announcements
+    // }
   }
 }
