@@ -1,37 +1,63 @@
- rules_version = '2'
+
+rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow anyone to read the announcements collection
-    match /announcements/{announcementId} {
-      allow read;
+
+    // Helper function to check if the requester is an admin
+    // An admin is an authenticated user whose document in /users/{uid} has a field role == 'admin'
+    function isAdmin() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Allow anyone to read the systemSettings collection
-    match /systemSettings/{document=*} {
-      allow get;
-      // Allow admins to update system settings
-      allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      // Allow admins to create settings
-      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Helper function to check if the requester is the owner of the document
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
     }
 
+    // User documents
     match /users/{userId} {
-      // Only allow authenticated users to read their own user document
-      allow get: if request.auth != null && request.auth.uid == userId;
+      // Admins can perform any action.
+      // Users can read their own profile.
+      // Users can create their own profile if they are setting role to 'student'.
+      // Users can update their own profile if they are not trying to change their role.
+      allow read: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin(); // Admins can list all users
 
-      // Allow authenticated users to create their own user document on signup,
-      // but prevent them from setting their own role to 'admin'
-      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.role == 'student';
+      allow create: if (isOwner(userId) && request.resource.data.role == 'student') || isAdmin();
 
-      // Allow authenticated users to update their own user document, but prevent them from
-      // changing their role.
-      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.role == resource.data.role;
+      allow update: if 
+        (isOwner(userId) && request.resource.data.role == resource.data.role) // User can update own data, but not change their role
+        || isAdmin(); // Admin can update anything
 
-      // Admins can list all users
-      allow list: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow delete: if isAdmin(); // Only admins can delete user profiles (consider implications)
 
-      // Admins can create, update, and delete any user
-      allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Disallow direct manipulation of subcollections unless explicitly defined
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // System Settings
+    // The settings document has a fixed ID 'appConfiguration'
+    match /systemSettings/appConfiguration {
+      // All authenticated users can read settings (e.g., to check maintenance mode)
+      allow read: if request.auth != null;
+
+      // Only admins can create, update, or delete the settings document.
+      allow create, update, delete: if isAdmin();
+
+      // Disallow direct manipulation of subcollections unless explicitly defined
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+    
+    // Default deny for any other paths not explicitly matched
+    match /{path=**}/documents/{document} {
+      allow read, write: if false;
     }
   }
 }

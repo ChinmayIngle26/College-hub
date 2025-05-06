@@ -138,13 +138,13 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   **1. Deploy Security Rules (MOST COMMON FIX):** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules`. Check the Firebase Console (Firestore Database > Rules tab) to see the currently active rules.
     *   **2. Set Admin Role:** For admin functionalities, **CRUCIALLY**, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b). The document ID for this user in the `users` collection must be their Firebase Authentication UID.
     *   **3. Check Rules Logic:** Review the rules in `firestore.rules` to confirm they grant the necessary permissions for the operations your app is trying to perform. For example:
-        *   Can authenticated users create their own user document in the `users` collection upon signup (with specific constraints, e.g., not setting their own role to 'admin')?
+        *   Can authenticated users create their own user document in the `users` collection upon signup (with specific constraints, e.g., only setting their own role to 'student')?
         *   Can authenticated users read their own user document?
         *   Can users with the 'admin' role `list` (get all documents) from the `users` collection?
-        *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection?
+        *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection, including system settings?
     *   **4. Verify User Authentication:** Ensure the user is actually signed in when the operation is attempted. Check the `user` object from `useAuth()` in your components.
-    *   **5. Check Firestore Data and Document IDs:** Verify that the document paths your code is trying to access are correct (e.g., `users/{UID}`).
-    *   **6. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test your rules against specific operations (read, write, list) by specific users (provide their UID and mock data). This is very helpful for debugging.
+    *   **5. Check Firestore Data and Document IDs:** Verify that the document paths your code is trying to access are correct (e.g., `users/{UID}`, `systemSettings/appConfiguration`).
+    *   **6. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test your rules against specific operations (read, write, list) by specific users (provide their UID and mock data, including their `role` if it's 'admin'). This is very helpful for debugging.
 *   **Blank screen after login/redirect issues**:
     *   Check the browser console for errors.
     *   Verify the `middleware.ts` logic and ensure cookies are being set/cleared correctly if you're relying on them for auth checks in middleware.
@@ -156,4 +156,3 @@ The application should now be running, typically at `http://localhost:9002` (as 
 *   Refine Firestore security rules as you add more collections and features.
 *   Add error handling and loading states for all data fetching operations.
 *   Implement admin functionalities and role-based access control.
-```
