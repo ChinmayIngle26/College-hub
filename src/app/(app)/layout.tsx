@@ -1,3 +1,4 @@
+'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAuth } from '@/context/auth-context';
@@ -21,25 +22,17 @@ export default function AppLayout({
   }, [user, loading]);
 
   if (isAdmin) {
-    return (
-      
-        <AdminLayout>{children}</AdminLayout>
-      
-    );
+    return <AdminLayout>{children}</AdminLayout>;
   }
 
   return (
-    
-      
-        <Sidebar />
-        
-          {/* Main content area will include its own header (within child pages/layouts) */}
-          
-            {children}
-          
-        
-      
-    
+    <div className="flex">
+      <Sidebar />
+      <main className="flex-1 p-4">
+        {/* Main content area will include its own header (within child pages/layouts) */}
+        {children}
+      </main>
+    </div>
   );
 }
 
