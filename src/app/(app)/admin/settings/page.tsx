@@ -4,9 +4,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { db } from '@/lib/firebase/client';
 import { doc, getDoc } from 'firebase/firestore';
-import { ShieldAlert, Settings, AlertTriangle, CheckCircle, UserPlus, Type, ListFilter } from 'lucide-react';
+import { ShieldAlert, Settings, AlertTriangle, CheckCircle, UserPlus, Type, ListFilter, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import type { SystemSettings } from '@/services/system-settings'; // Import the type
 import { getSystemSettings, updateSystemSettings } from '@/services/system-settings'; // Import service functions
+import { Textarea } from '@/components/ui/textarea';
 
 // Define the specific admin email address
 const ADMIN_EMAIL = "admin@gmail.com";
@@ -47,7 +47,8 @@ export default function AdminSettingsPage() {
 
   // Local state for debounced input to avoid too many Firestore writes
   const [tempAppName, setTempAppName] = useState('');
-
+    const [tempAnnouncementTitle, setTempAnnouncementTitle] = useState('');
+    const [tempAnnouncementContent, setTempAnnouncementContent] = useState('');
 
   useEffect(() => {
     if (authLoading) {
@@ -99,6 +100,8 @@ export default function AdminSettingsPage() {
           const currentSettings = await getSystemSettings();
           setSettings(currentSettings);
           setTempAppName(currentSettings.applicationName); // Initialize tempAppName
+            setTempAnnouncementTitle(currentSettings.announcementTitle);
+            setTempAnnouncementContent(currentSettings.announcementContent);
         } catch (error) {
           console.error("Error fetching system settings:", error);
           setErrorSettings("Could not load system settings. Please try again.");
@@ -140,6 +143,12 @@ export default function AdminSettingsPage() {
       if (key === 'applicationName') {
         setTempAppName(currentSettings.applicationName);
       }
+        if (key === 'announcementTitle') {
+            setTempAnnouncementTitle(currentSettings.announcementTitle);
+        }
+        if (key === 'announcementContent') {
+            setTempAnnouncementContent(currentSettings.announcementContent);
+        }
     }
   };
 
@@ -157,12 +166,36 @@ export default function AdminSettingsPage() {
     }, 1000), // 1 second debounce
     [settings] // Recreate if settings (and thus handleSettingUpdate) changes identity
   );
+    const debouncedUpdateAnnouncementTitle = useCallback(
+        debounce((newTitle: string) => {
+            handleSettingUpdate('announcementTitle', newTitle, `Announcement title updated to "${newTitle}".`);
+        }, 1000), // 1 second debounce
+        [settings] // Recreate if settings changes identity
+    );
+
+    const debouncedUpdateAnnouncementContent = useCallback(
+        debounce((newContent: string) => {
+            handleSettingUpdate('announcementContent', newContent, 'Announcement content updated.');
+        }, 1000), // 1 second debounce
+        [settings] // Recreate if settings changes identity
+    );
 
   const handleTempApplicationNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     setTempAppName(newName);
     debouncedUpdateApplicationName(newName);
   };
+    const handleTempAnnouncementTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newTitle = e.target.value;
+        setTempAnnouncementTitle(newTitle);
+        debouncedUpdateAnnouncementTitle(newTitle);
+    };
+
+    const handleTempAnnouncementContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newContent = e.target.value;
+        setTempAnnouncementContent(newContent);
+        debouncedUpdateAnnouncementContent(newContent);
+    };
 
   const handleDefaultItemsPerPageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
@@ -245,104 +278,142 @@ export default function AdminSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl font-bold flex items-center gap-2">
-            <Settings className="h-6 w-6" /> System Settings
+          <LayoutDashboard className="h-6 w-6" /> System Settings
           </CardTitle>
           <CardDescription>Configure system-wide settings for the application.</CardDescription>
         </CardHeader>
       </Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>General Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                {/* Maintenance Mode */}
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                        <Label htmlFor="maintenance-mode" className="text-base font-medium flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-orange-500" />
+                            Maintenance Mode
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            When enabled, users will see a maintenance page. Only admins can access the site.
+                        </p>
+                    </div>
+                    {settings && (
+                        <Switch
+                            id="maintenance-mode"
+                            checked={settings.maintenanceMode}
+                            onCheckedChange={handleMaintenanceModeToggle}
+                            aria-label="Toggle maintenance mode"
+                        />
+                    )}
+                </div>
 
+                {/* Allow New User Registration */}
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                        <Label htmlFor="allow-registration" className="text-base font-medium flex items-center gap-2">
+                            <UserPlus className="h-5 w-5 text-blue-500" />
+                            Allow New User Registration
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Enable or disable the ability for new users to sign up.
+                        </p>
+                    </div>
+                    {settings && (
+                        <Switch
+                            id="allow-registration"
+                            checked={settings.allowNewUserRegistration}
+                            onCheckedChange={handleAllowNewUserRegistrationToggle}
+                            aria-label="Toggle new user registration"
+                        />
+                    )}
+                </div>
+
+                {/* Application Name */}
+                <div className="rounded-lg border p-4 space-y-2">
+                    <Label htmlFor="application-name" className="text-base font-medium flex items-center gap-2">
+                        <Type className="h-5 w-5 text-green-500" />
+                        Application Name
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                        This name will be displayed in various parts of the application, like the page title.
+                    </p>
+                    {settings && (
+                        <Input
+                            id="application-name"
+                            value={tempAppName}
+                            onChange={handleTempApplicationNameChange}
+                            placeholder="e.g., My Awesome ERP"
+                        />
+                    )}
+                </div>
+
+                {/* Default Items Per Page */}
+                <div className="rounded-lg border p-4 space-y-2">
+                    <Label htmlFor="items-per-page" className="text-base font-medium flex items-center gap-2">
+                        <ListFilter className="h-5 w-5 text-purple-500" />
+                        Default Items Per Page
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                        Set the default number of items to display in paginated lists (e.g., user lists).
+                    </p>
+                    {settings && (
+                        <Input
+                            id="items-per-page"
+                            type="number"
+                            value={settings.defaultItemsPerPage}
+                            onChange={handleDefaultItemsPerPageChange}
+                            placeholder="e.g., 10"
+                            min="1"
+                        />
+                    )}
+                </div>
+            </CardContent>
+        </Card>
       <Card>
         <CardHeader>
-          <CardTitle>General Settings</CardTitle>
+          <CardTitle>Announcement Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Maintenance Mode */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <Label htmlFor="maintenance-mode" className="text-base font-medium flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
-                Maintenance Mode
-              </Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                When enabled, users will see a maintenance page. Only admins can access the site.
-              </p>
-            </div>
-            {settings && (
-              <Switch
-                id="maintenance-mode"
-                checked={settings.maintenanceMode}
-                onCheckedChange={handleMaintenanceModeToggle}
-                aria-label="Toggle maintenance mode"
-              />
-            )}
-          </div>
-
-          {/* Allow New User Registration */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <Label htmlFor="allow-registration" className="text-base font-medium flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-blue-500" />
-                Allow New User Registration
-              </Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                Enable or disable the ability for new users to sign up.
-              </p>
-            </div>
-            {settings && (
-              <Switch
-                id="allow-registration"
-                checked={settings.allowNewUserRegistration}
-                onCheckedChange={handleAllowNewUserRegistrationToggle}
-                aria-label="Toggle new user registration"
-              />
-            )}
-          </div>
-
-          {/* Application Name */}
+          {/* Announcement Title */}
           <div className="rounded-lg border p-4 space-y-2">
-            <Label htmlFor="application-name" className="text-base font-medium flex items-center gap-2">
+            <Label htmlFor="announcement-title" className="text-base font-medium flex items-center gap-2">
               <Type className="h-5 w-5 text-green-500" />
-              Application Name
+              Announcement Title
             </Label>
             <p className="text-sm text-muted-foreground">
-              This name will be displayed in various parts of the application, like the page title.
+              The title of the announcement displayed on the dashboard.
             </p>
             {settings && (
               <Input
-                id="application-name"
-                value={tempAppName}
-                onChange={handleTempApplicationNameChange}
-                placeholder="e.g., My Awesome ERP"
+                id="announcement-title"
+                value={tempAnnouncementTitle}
+                onChange={handleTempAnnouncementTitleChange}
+                placeholder="e.g., Welcome to the Dashboard!"
               />
             )}
           </div>
 
-          {/* Default Items Per Page */}
+          {/* Announcement Content */}
           <div className="rounded-lg border p-4 space-y-2">
-            <Label htmlFor="items-per-page" className="text-base font-medium flex items-center gap-2">
-              <ListFilter className="h-5 w-5 text-purple-500" />
-              Default Items Per Page
+            <Label htmlFor="announcement-content" className="text-base font-medium flex items-center gap-2">
+              <Type className="h-5 w-5 text-purple-500" />
+              Announcement Content
             </Label>
             <p className="text-sm text-muted-foreground">
-              Set the default number of items to display in paginated lists (e.g., user lists).
+              The main content of the announcement displayed on the dashboard.
             </p>
             {settings && (
-              <Input
-                id="items-per-page"
-                type="number"
-                value={settings.defaultItemsPerPage}
-                onChange={handleDefaultItemsPerPageChange}
-                placeholder="e.g., 10"
-                min="1"
+              <Textarea
+                id="announcement-content"
+                value={tempAnnouncementContent}
+                onChange={handleTempAnnouncementContentChange}
+                placeholder="e.g., Stay tuned for upcoming events and important updates."
               />
             )}
           </div>
         </CardContent>
-        <CardFooter>
-           <p className="text-xs text-muted-foreground">
-            Settings last updated: {settings?.lastUpdated ? new Date(settings.lastUpdated.seconds * 1000).toLocaleString() : 'N/A'}
-          </p>
-        </CardFooter>
       </Card>
 
        {/* Placeholder for more settings categories */}
@@ -373,4 +444,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-

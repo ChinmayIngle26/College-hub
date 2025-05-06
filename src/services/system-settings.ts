@@ -12,6 +12,8 @@ export interface SystemSettings {
   maintenanceMode: boolean;
   allowNewUserRegistration: boolean; // New setting
   applicationName: string; // New setting
+  announcementTitle: string;
+  announcementContent: string;
   defaultItemsPerPage: number; // New setting
   lastUpdated?: Timestamp; // Firestore Timestamp for server-side updates
   // Add other settings fields here as needed
@@ -28,7 +30,15 @@ export interface SystemSettings {
 export async function getSystemSettings(): Promise<SystemSettings> {
   if (!db) {
     console.error("Firestore DB instance is not available for system settings.");
-    throw new Error("Database connection error while fetching system settings.");
+    return { // Return default object instead of throwing error
+      maintenanceMode: false,
+      allowNewUserRegistration: true,
+      applicationName: 'Student ERP Dashboard',
+      announcementTitle: 'Welcome!',
+      announcementContent: 'This is a default announcement. Please update it in the admin settings.',
+      defaultItemsPerPage: 10,
+      lastUpdated: undefined,
+    };
   }
 
   const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
@@ -44,6 +54,8 @@ export async function getSystemSettings(): Promise<SystemSettings> {
         maintenanceMode: data.maintenanceMode === undefined ? false : data.maintenanceMode,
         allowNewUserRegistration: data.allowNewUserRegistration === undefined ? true : data.allowNewUserRegistration,
         applicationName: data.applicationName === undefined ? 'Student ERP Dashboard' : data.applicationName,
+        announcementTitle: data.announcementTitle === undefined ? 'Welcome!' : data.announcementTitle,
+        announcementContent: data.announcementContent === undefined ? 'This is a default announcement. Please update it in the admin settings.' : data.announcementContent,
         defaultItemsPerPage: data.defaultItemsPerPage === undefined ? 10 : data.defaultItemsPerPage,
         lastUpdated: data.lastUpdated,
       };
@@ -54,6 +66,8 @@ export async function getSystemSettings(): Promise<SystemSettings> {
         maintenanceMode: false,
         allowNewUserRegistration: true,
         applicationName: 'Student ERP Dashboard',
+        announcementTitle: 'Welcome!',
+        announcementContent: 'This is a default announcement. Please update it in the admin settings.',
         defaultItemsPerPage: 10,
         lastUpdated: serverTimestamp() as Timestamp, // Firestore will convert this
       };
@@ -65,7 +79,15 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     }
   } catch (error) {
     console.error("Error fetching or initializing system settings:", error);
-    throw new Error("Failed to retrieve or initialize system settings.");
+     return { // Return default object instead of throwing error
+      maintenanceMode: false,
+      allowNewUserRegistration: true,
+      applicationName: 'Student ERP Dashboard',
+      announcementTitle: 'Welcome!',
+      announcementContent: 'This is a default announcement. Please update it in the admin settings.',
+      defaultItemsPerPage: 10,
+      lastUpdated: undefined,
+    };
   }
 }
 
@@ -105,6 +127,8 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
                 maintenanceMode: false, // Default
                 allowNewUserRegistration: true, // Default
                 applicationName: 'Student ERP Dashboard', // Default
+                announcementTitle: 'Welcome!',
+                announcementContent: 'This is a default announcement. Please update it in the admin settings.',
                 defaultItemsPerPage: 10, // Default
                 ...settingsToUpdate, // User provided settings override defaults
                 lastUpdated: serverTimestamp() as Timestamp,
@@ -120,4 +144,3 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
     throw new Error("Failed to update system settings.");
   }
 }
-
