@@ -4,75 +4,103 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if the requesting user is an admin.
-    // It verifies if the user's document in the 'users' collection has a 'role' field set to 'admin'.
-    // This assumes the admin user's document (e.g., for admin@gmail.com) in /users/{adminAuthUid}
-    // has a field `role: 'admin'`.
-    function isAdmin() {
-      return request.auth != null &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // --- Default Deny ---
+    // Deny all reads and writes by default to enforce explicit permissions.
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Rules for the 'users' collection
+    // --- User Profiles ---
+    // Users can read their own profile.
+    // Users can create their own profile upon signup (with specific data constraints).
+    // Users can update their own profile (with specific data constraints).
+    // Admins can read any user profile.
+    // Admins can create, update, and delete user profiles.
     match /users/{userId} {
-      // Allow users to read their own profile.
-      // Allow admins to read any user's profile.
-      allow get: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read: if request.auth != null && 
+                       (request.auth.uid == userId || 
+                        (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')));
+      
+      allow create: if request.auth != null && 
+                       (
+                         // Standard user signup: can only create their own doc, with role 'student'
+                         (request.auth.uid == userId &&
+                           request.resource.data.keys().hasAll(['name', 'studentId', 'major', 'email', 'role']) &&
+                           request.resource.data.name is string &&
+                           request.resource.data.studentId is string &&
+                           request.resource.data.major is string &&
+                           request.resource.data.email == request.auth.token.email &&
+                           request.resource.data.role == 'student')
+                         ||
+                         // Admin creating a user profile: can create for any userId, with any role
+                         ( (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')) )
+                       );
 
-      // Allow admins to list all users (for the admin panel user management).
-      allow list: if request.auth != null && isAdmin();
+      allow update: if request.auth != null &&
+                       (
+                         // User updating their own profile (cannot change role to admin or from admin)
+                         (request.auth.uid == userId &&
+                           !(request.resource.data.role != resource.data.role && request.resource.data.role == 'admin') && 
+                           !(request.resource.data.role != resource.data.role && resource.data.role == 'admin') 
+                         ) ||
+                         // Admin updating any user profile
+                         (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'))
+                       );
+      
+      allow delete: if request.auth != null && 
+                       (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+                       // Only admins can delete user profiles from Firestore
 
-      // Allow new users to create their own profile during sign-up.
-      // They can only set their own role to 'student'.
-      // Admins can create any user profile (e.g., from admin panel).
-      allow create: if request.auth != null && (
-                      (request.auth.uid == userId && request.resource.data.role == 'student') ||
-                      isAdmin()
-                    );
-
-      // Allow users to update their own profile.
-      // Regular users cannot change their role through this rule.
-      // Admins can update any user's profile, including their role.
-      allow update: if request.auth != null && (
-                      (request.auth.uid == userId && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || // User can update if role isn't changing or not present in update
-                      isAdmin()
-                    );
-
-      // Allow users to delete their own profile (Firestore document only).
-      // Allow admins to delete any user's profile.
-      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Deny access to subcollections by default unless explicitly allowed
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
 
-    // Rules for the 'systemSettings' collection (specifically the 'appConfiguration' document)
+    // --- System Settings ---
+    // System settings are stored in a single document: systemSettings/appConfiguration
     match /systemSettings/appConfiguration {
-      // Allow anyone to read the system settings (e.g., for application name in metadata).
-      // This is important for SSR/SSG if settings are needed before auth.
-      allow get: if true;
+      // Allow unauthenticated reads for settings needed during build (generateMetadata) or pre-login (signup page check).
+      // Authenticated users can also read settings.
+      allow read: if true; 
 
-      // Only allow admins to create, update, or delete system settings.
-      allow create, update, delete: if request.auth != null && isAdmin();
+      // Write operations (create, update, delete) are restricted to admins.
+      // 'create' is implicitly handled by setDoc with merge:true if document doesn't exist.
+      // 'delete' of appConfiguration should generally be disallowed or highly restricted.
+      allow write: if request.auth != null && 
+                        (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+      
+      // Deny access to subcollections by default
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
 
-    // --- Add rules for other collections as needed ---
-    // Example for a 'courses' collection if you implement it later:
-    // match /courses/{courseId} {
-    //   allow read: if request.auth != null; // Students can read course info
-    //   allow list: if request.auth != null; // Students can list courses
-    //   allow create, update, delete: if request.auth != null && isAdmin(); // Only admins manage courses
-    // }
+    // --- Rules for other collections (Announcements, Grades, Attendance, etc.) ---
+    // These are examples and need to be adjusted based on actual data structure and access patterns.
 
-    // Example for 'announcements' if they are stored in Firestore:
-    // (Currently, your `getAnnouncements` service uses mock data)
+    // Example: Announcements (assuming they are globally readable but only admin-writable)
     // match /announcements/{announcementId} {
-    //   allow read: if request.auth != null; // All authenticated users can read announcements
-    //   allow list: if request.auth != null; // All authenticated users can list announcements
-    //   allow create, update, delete: if request.auth != null && isAdmin(); // Admins manage announcements
+    //   allow read: if true;
+    //   allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     // }
 
-    // Default deny for any other paths not explicitly matched.
-    // This is implicit but can be made explicit if preferred.
-    // match /{document=**} {
-    //   allow read, write: if false;
+    // Example: Grades (user can read their own grades, admin can read all/specific)
+    // This assumes grades are stored per user, e.g., /users/{userId}/grades/{gradeId}
+    // Or in a global collection with a studentId field: /grades/{gradeId} where doc contains studentId
+    // match /grades/{gradeId} {
+    //   allow read: if request.auth != null && 
+    //                  (resource.data.studentId == request.auth.uid || 
+    //                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    //   // Add write rules for faculty/admins
+    // }
+
+    // Example: Attendance (similar to grades)
+    // match /attendance/{attendanceId} {
+    //   allow read: if request.auth != null && 
+    //                  (resource.data.studentId == request.auth.uid || 
+    //                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    //   // Add write rules for faculty/admins
     // }
   }
 }
