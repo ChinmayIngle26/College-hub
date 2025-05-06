@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState } from 'react';
@@ -16,6 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+
 
 const signInSchema = z.object({
   email: z.string().email({ message: 'Invalid email address.' }),
@@ -55,7 +57,7 @@ export default function SignInPage() {
     setLoading(true);
 
     // Check if Firebase Auth was initialized correctly
-    if (!auth) {
+    if (!auth || !db) {
         toast({
             title: 'Initialization Error',
             description: 'Firebase Auth is not configured correctly. Please check the console and environment variables.',
@@ -73,11 +75,40 @@ export default function SignInPage() {
       const idToken = await user.getIdToken();
       setCookie('firebaseAuthToken', idToken, 1); // Set cookie (e.g., expires in 1 day)
 
+      // Check if the user is an admin
+      let isAdmin = false;
+      const ADMIN_EMAIL = "admin@gmail.com";
+
+      if (user.email === ADMIN_EMAIL) {
+        isAdmin = true;
+      } else {
+        // Check Firestore for admin role
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            if (userData.role === 'admin') {
+              isAdmin = true;
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+          // Handle the error as needed
+        }
+      }
+
       toast({
         title: 'Sign In Successful',
         description: 'Welcome back!',
       });
-      router.push('/'); // Redirect to dashboard on successful sign-in
+
+      if (isAdmin) {
+        router.push('/admin'); // Redirect to admin panel
+      } else {
+        router.push('/'); // Redirect to dashboard on successful sign-in
+      }
     } catch (error: any) {
       console.error('Sign in error:', error);
       // Provide more specific error messages
@@ -153,3 +184,4 @@ export default function SignInPage() {
     </div>
   );
 }
+
