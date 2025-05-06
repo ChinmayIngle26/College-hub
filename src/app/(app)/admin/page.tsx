@@ -1,26 +1,39 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { db } from '@/lib/firebase/client';
-import { doc, getDoc, collection, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { UserPlus, Users, Settings, ShieldAlert, Edit, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast'; // Added useToast import
 
 // Define the specific admin email address
 const ADMIN_EMAIL = "admin@gmail.com";
 
+interface UserData {
+  id: string;
+  name?: string;
+  studentId?: string;
+  major?: string;
+  email?: string;
+  role?: string;
+  createdAt?: any; // Adjust if using a specific timestamp type
+}
+
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast(); // Initialize useToast
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
-  const [usersData, setUsersData] = useState([]);
+  const [usersData, setUsersData] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '' });
 
@@ -34,31 +47,31 @@ export default function AdminPage() {
       return;
     }
 
-    // Check if the user is an admin
     const checkAdminAccess = async () => {
       setCheckingRole(true);
       let userIsCurrentlyAdmin = false;
 
-      // Condition 1: User's email is the hardcoded admin email
       if (user.email === ADMIN_EMAIL) {
         userIsCurrentlyAdmin = true;
       } else {
-        // Condition 2: User has 'admin' role in Firestore
-        // This check is performed only if the email doesn't match ADMIN_EMAIL
-        if (db) { // Ensure db is initialized
+        if (db) {
           try {
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
 
             if (userDocSnap.exists()) {
-              const userData = userDocSnap.data();
-              if (userData.role === 'admin') {
+              const userDataFromDb = userDocSnap.data();
+              if (userDataFromDb.role === 'admin') {
                 userIsCurrentlyAdmin = true;
               }
             }
           } catch (error) {
             console.error("Error fetching user role:", error);
-            // Keep userIsCurrentlyAdmin as false, error means no admin role found via DB
+            toast({
+              title: "Error",
+              description: "Could not verify admin role.",
+              variant: "destructive",
+            });
           }
         }
       }
@@ -66,7 +79,6 @@ export default function AdminPage() {
       if (userIsCurrentlyAdmin) {
         setIsAdmin(true);
       } else {
-        // If user is not admin by either condition, redirect
         router.push('/');
       }
       setCheckingRole(false);
@@ -74,7 +86,7 @@ export default function AdminPage() {
 
     checkAdminAccess();
 
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, toast]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -83,10 +95,15 @@ export default function AdminPage() {
       try {
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
-        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
         setUsersData(usersList);
       } catch (error) {
         console.error("Error fetching users:", error);
+        toast({
+          title: "Error",
+          description: "Could not fetch users data.",
+          variant: "destructive",
+        });
       } finally {
         setLoadingUsers(false);
       }
@@ -95,35 +112,46 @@ export default function AdminPage() {
     if (isAdmin) {
       fetchUsers();
     }
-  }, [isAdmin]);
+  }, [isAdmin, toast]);
 
   const handleCreateUser = async () => {
     if (!db || !isAdmin) return;
 
     try {
-      // Basic validation - enhance as needed
       if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email) {
-        alert("Please fill in all fields to create a new user.");
+        toast({
+          title: "Validation Error",
+          description: "Please fill in all fields to create a new user.",
+          variant: "destructive",
+        });
         return;
       }
 
-      // Add new user to Firebase (Firestore)
       const usersCollection = collection(db, 'users');
       await addDoc(usersCollection, {
         ...newUser,
-        role: 'student' // Default role for new users
+        role: 'student',
+        createdAt: serverTimestamp(), // Add a timestamp
       });
 
-      // Refresh users list after successful creation
+      toast({
+        title: "Success",
+        description: "User created successfully.",
+      });
+
+      // Refresh users list
       const usersSnapshot = await getDocs(usersCollection);
-      const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
       setUsersData(usersList);
 
-      // Clear the new user input fields
       setNewUser({ name: '', studentId: '', major: '', email: '' });
     } catch (error) {
       console.error("Error creating user:", error);
-      alert("Could not create user. Please check console for details.");
+      toast({
+        title: "Error",
+        description: "Could not create user. Please check console for details.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -131,18 +159,24 @@ export default function AdminPage() {
     if (!db || !isAdmin) return;
 
     try {
-      // Delete user from Firestore
       const userDocRef = doc(db, 'users', userId);
       await deleteDoc(userDocRef);
 
-      // Refresh users list after successful deletion
-      const usersCollection = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersCollection);
-      const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUsersData(usersList);
+      toast({
+        title: "Success",
+        description: "User deleted successfully.",
+      });
+
+      // Refresh users list
+      setUsersData(usersData.filter(u => u.id !== userId));
+
     } catch (error) {
       console.error("Error deleting user:", error);
-      alert("Could not delete user. Please check console for details.");
+      toast({
+        title: "Error",
+        description: "Could not delete user. Please check console for details.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -163,8 +197,6 @@ export default function AdminPage() {
   }
 
   if (!isAdmin) {
-    // This state should ideally be handled by the redirect,
-    // but as a fallback or if redirect hasn't completed:
     return (
       <>
         <MainHeader />
@@ -178,7 +210,6 @@ export default function AdminPage() {
     );
   }
 
-  // Render Admin Panel if user is admin
   return (
     <>
       <MainHeader />
@@ -189,9 +220,7 @@ export default function AdminPage() {
           </h2>
         </div>
 
-        {/* Admin Features Grid */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {/* Example Card: User Management */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -202,61 +231,77 @@ export default function AdminPage() {
             </CardHeader>
             <CardContent>
               {loadingUsers ? (
-                <p>Loading users...</p>
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
               ) : (
                 <>
-                  {/* List of Users */}
-                  <ul>
-                    {usersData.map(user => (
-                      <li key={user.id} className="flex items-center justify-between py-2 border-b">
-                        <span>{user.name} ({user.email})</span>
-                        <div>
-                          <Button variant="ghost" size="icon" onClick={() => alert('Edit functionality not implemented.')}> {/*  Implement edit functionality */}
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteUser(user.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  {usersData.length > 0 ? (
+                    <ul className="max-h-60 overflow-y-auto">
+                      {usersData.map(u => (
+                        <li key={u.id} className="flex items-center justify-between py-2 border-b">
+                          <div className="flex flex-col">
+                            <span className="font-medium">{u.name || 'N/A'}</span>
+                            <span className="text-sm text-muted-foreground">{u.email || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <Button variant="ghost" size="icon" onClick={() => toast({ title: "Info", description: "Edit functionality not implemented." })}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/90" onClick={() => handleDeleteUser(u.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No users found.</p>
+                  )}
 
-                  {/* Add New User Form */}
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium">Add New User</h4>
-                    <Input
-                      type="text"
-                      placeholder="Name"
-                      value={newUser.name}
-                      onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                    />
-                    <Input
-                      type="text"
-                      placeholder="Student ID"
-                      value={newUser.studentId}
-                      onChange={(e) => setNewUser({ ...newUser, studentId: e.target.value })}
-                    />
-                    <Input
-                      type="text"
-                      placeholder="Major"
-                      value={newUser.major}
-                      onChange={(e) => setNewUser({ ...newUser, major: e.target.value })}
-                    />
-                    <Input
-                      type="email"
-                      placeholder="Email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    />
-                    <Button onClick={handleCreateUser} className="mt-2">Create User</Button>
+                  <div className="mt-6 pt-4 border-t">
+                    <h4 className="text-md font-semibold mb-3">Add New User</h4>
+                    <div className="space-y-3">
+                      <Input
+                        type="text"
+                        placeholder="Name"
+                        value={newUser.name}
+                        onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                        className="mb-2" // Added margin
+                      />
+                      <Input
+                        type="text"
+                        placeholder="Student ID"
+                        value={newUser.studentId}
+                        onChange={(e) => setNewUser({ ...newUser, studentId: e.target.value })}
+                        className="mb-2" // Added margin
+                      />
+                      <Input
+                        type="text"
+                        placeholder="Major"
+                        value={newUser.major}
+                        onChange={(e) => setNewUser({ ...newUser, major: e.target.value })}
+                        className="mb-2" // Added margin
+                      />
+                      <Input
+                        type="email"
+                        placeholder="Email"
+                        value={newUser.email}
+                        onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                        className="mb-2" // Added margin
+                      />
+                      <Button onClick={handleCreateUser} className="w-full mt-2">
+                         <UserPlus className="mr-2 h-4 w-4" /> Create User
+                      </Button>
+                    </div>
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
-          {/* Example Card: System Settings */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -266,20 +311,19 @@ export default function AdminPage() {
               <CardDescription>Configure application settings.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" onClick={() => alert('Settings configuration not implemented.')}> {/* Implement settings configuration */}
+              <Button variant="outline" className="w-full" onClick={() => toast({ title: "Info", description: "Settings configuration not implemented." })}>
                 Configure Settings
               </Button>
             </CardContent>
           </Card>
 
-          {/* Add more admin feature cards as needed */}
           <Card>
             <CardHeader>
               <CardTitle>Content Management</CardTitle>
               <CardDescription>Manage announcements, calendar, etc.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" onClick={() => alert('Content management not implemented.')}> {/* Implement content management functionality */}
+              <Button variant="outline" className="w-full" onClick={() => toast({ title: "Info", description: "Content management not implemented." })}>
                 Manage Content
               </Button>
             </CardContent>
