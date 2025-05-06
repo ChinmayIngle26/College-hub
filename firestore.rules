@@ -1,54 +1,54 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if the requesting user has an 'admin' role.
-    // This assumes the admin user document in the 'users' collection
-    // has a field `role: 'admin'`.
+    // Function to check if the requesting user is an admin
     function isAdmin() {
+      // Ensure request.auth is not null before trying to access request.auth.uid
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // User profiles
     match /users/{userId} {
-      // Allow authenticated users to read and write their own document.
-      // This is important for profile management by individual users.
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Allow users to read their own profile, and admins to read any profile
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
 
-      // Allow users with the 'admin' role to perform CRUD operations on any user document.
-      // 'list' is required for querying the entire 'users' collection (e.g., admin viewing all users).
-      // 'get' is for reading individual user documents.
-      // 'create' is for adding new user documents.
-      // 'update' is for modifying existing user documents.
-      // 'delete' is for removing user documents.
-      allow list, get, create, update, delete: if isAdmin();
+      // Allow users to create their own profile (e.g., during signup)
+      // Allow users to update their own profile
+      // Allow admins to create, update, or delete any user profile
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // More granular:
+      // allow create: if request.auth != null; // Any authenticated user can create a user document (e.g., on signup)
+      // allow update: if request.auth != null && (request.auth.uid == userId || isAdmin()); // User can update own, admin can update any
+      // allow delete: if request.auth != null && isAdmin(); // Only admins can delete
     }
 
-    // --- Placeholder for future collections ---
-    // If you add new collections like 'announcements', 'grades', 'attendance',
-    // you will need to add specific rules for them here.
-    // Example for publicly readable announcements, writable by admins:
-    // match /announcements/{announcementId} {
-    //   allow read: if true;
-    //   allow write: if isAdmin();
-    // }
-    //
-    // Example for student-specific data (e.g., grades, attendance):
-    // match /grades/{studentId}/{gradeEntryId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == studentId; // Student can manage their own
-    //   allow read: if isAdmin(); // Admins can read
-    // }
-    // match /attendance/{studentId}/{attendanceRecordId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == studentId; // Student can manage their own
-    //   allow read: if isAdmin(); // Admins can read
-    // }
-
-
-    // Default deny all other access to any other collections or documents
-    // not explicitly defined above. This is a crucial security measure.
-    match /{document=**} {
-      allow read, write: if false;
+    // Allow admins to list all users (needed for User Management in Admin Panel)
+    match /users {
+      allow list: if request.auth != null && isAdmin();
     }
+
+    // Announcements - Example, adjust as needed
+    match /announcements/{announcementId} {
+      // Allow any authenticated user to read announcements
+      allow read: if request.auth != null;
+      // Allow only admins to create, update, or delete announcements
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // TODO: Add rules for other collections as your application grows
+    // e.g., attendance, grades, appointments, voting
+    // Consider who should read/write this data.
+
+    // Example for a 'grades' collection (students can read own, admins can read/write all)
+    // match /grades/{studentId}/courses/{courseId} {
+    //   allow read: if request.auth != null && (request.auth.uid == studentId || isAdmin());
+    //   allow write: if request.auth != null && isAdmin(); // Assuming only admins input/edit grades
+    // }
+    // match /grades/{studentId} {
+    //   allow list: if request.auth != null && (request.auth.uid == studentId || isAdmin()); // For listing courses for a student
+    // }
+
   }
 }
