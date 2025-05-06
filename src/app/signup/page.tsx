@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -17,6 +17,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { getSystemSettings } from '@/services/system-settings'; // Import settings service
+import type { SystemSettings } from '@/services/system-settings';
 
 // Schema including name, studentId, and major
 const signUpSchema = z.object({
@@ -47,6 +49,31 @@ export default function SignUpPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const settings = await getSystemSettings();
+        setSystemSettings(settings);
+      } catch (error) {
+        console.error("Failed to load system settings:", error);
+        toast({
+          title: "Error",
+          description: "Could not load application settings. Please try again later.",
+          variant: "destructive",
+        });
+        // Optionally, prevent sign-up if settings can't be loaded
+        // setSystemSettings({ allowNewUserRegistration: false }); // Default to no registration on error
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+    fetchSettings();
+  }, [toast]);
+
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
@@ -61,6 +88,27 @@ export default function SignUpPage() {
 
   const onSubmit = async (data: SignUpFormValues) => {
     setLoading(true);
+
+    if (loadingSettings) {
+        toast({
+            title: 'Please wait',
+            description: 'Loading application settings...',
+            variant: 'default'
+        });
+        setLoading(false);
+        return;
+    }
+
+    if (!systemSettings?.allowNewUserRegistration) {
+        toast({
+            title: 'Registration Disabled',
+            description: 'New user registration is currently disabled by the administrator.',
+            variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+    }
+
 
     // Check if Firebase was initialized correctly
     if (!auth || !db) {
@@ -123,6 +171,28 @@ export default function SignUpPage() {
       setLoading(false);
     }
   };
+
+  if (loadingSettings) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold text-center">Sign Up</CardTitle>
+            <CardDescription className="text-center">Loading settings...</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -199,7 +269,7 @@ export default function SignUpPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || loadingSettings || !systemSettings?.allowNewUserRegistration}>
                 {loading ? 'Creating Account...' : 'Sign Up'}
               </Button>
             </form>
@@ -215,3 +285,4 @@ export default function SignUpPage() {
     </div>
   );
 }
+

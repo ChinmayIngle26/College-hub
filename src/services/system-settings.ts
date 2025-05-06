@@ -10,10 +10,12 @@ const SETTINGS_DOC_ID = 'appConfiguration'; // Singleton document for all app-wi
  */
 export interface SystemSettings {
   maintenanceMode: boolean;
+  allowNewUserRegistration: boolean; // New setting
+  applicationName: string; // New setting
+  defaultItemsPerPage: number; // New setting
   lastUpdated?: Timestamp; // Firestore Timestamp for server-side updates
   // Add other settings fields here as needed
   // e.g., defaultTheme?: 'light' | 'dark' | 'system';
-  // e.g., newFeatureXEnabled?: boolean;
 }
 
 /**
@@ -35,12 +37,24 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     const docSnap = await getDoc(settingsDocRef);
 
     if (docSnap.exists()) {
-      return docSnap.data() as SystemSettings;
+      const data = docSnap.data() as SystemSettings;
+      // Ensure all fields are present, falling back to defaults if some are missing
+      // This is important for when new settings are added to an existing deployment
+      return {
+        maintenanceMode: data.maintenanceMode === undefined ? false : data.maintenanceMode,
+        allowNewUserRegistration: data.allowNewUserRegistration === undefined ? true : data.allowNewUserRegistration,
+        applicationName: data.applicationName === undefined ? 'Student ERP Dashboard' : data.applicationName,
+        defaultItemsPerPage: data.defaultItemsPerPage === undefined ? 10 : data.defaultItemsPerPage,
+        lastUpdated: data.lastUpdated,
+      };
     } else {
       // Settings document doesn't exist, initialize with defaults
       console.log("No system settings document found. Initializing with defaults.");
       const defaultSettings: SystemSettings = {
         maintenanceMode: false,
+        allowNewUserRegistration: true,
+        applicationName: 'Student ERP Dashboard',
+        defaultItemsPerPage: 10,
         lastUpdated: serverTimestamp() as Timestamp, // Firestore will convert this
       };
       await setDoc(settingsDocRef, defaultSettings);
@@ -88,8 +102,11 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
             // Attempt to create the document with the new settings
             // This assumes settingsToUpdate contains all necessary fields for a new doc or defaults are fine.
             const fullSettingsOnCreate: SystemSettings = {
-                maintenanceMode: false, // Default, override if in settingsToUpdate
-                ...settingsToUpdate,
+                maintenanceMode: false, // Default
+                allowNewUserRegistration: true, // Default
+                applicationName: 'Student ERP Dashboard', // Default
+                defaultItemsPerPage: 10, // Default
+                ...settingsToUpdate, // User provided settings override defaults
                 lastUpdated: serverTimestamp() as Timestamp,
             };
             await setDoc(settingsDocRef, fullSettingsOnCreate);
@@ -103,3 +120,4 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
     throw new Error("Failed to update system settings.");
   }
 }
+
