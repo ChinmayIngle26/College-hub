@@ -72,6 +72,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     }
   } catch (error) {
     console.error("Error fetching or initializing system settings:", error);
+    //Instead of throwing error, return default settings
     return defaultSettings;
   }
 }
@@ -123,3 +124,4 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
     throw new Error("Failed to update system settings.");
   }
 }
+
