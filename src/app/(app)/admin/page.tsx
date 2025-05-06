@@ -8,7 +8,7 @@ import { db } from '@/lib/firebase/client';
 import { doc, getDoc, collection, getDocs, addDoc, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { UserPlus, Users, Settings, ShieldAlert, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { UserPlus, Users, Settings, ShieldAlert, Edit, Trash2, CheckCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -49,6 +49,7 @@ export default function AdminPage() {
 
     if (!user) {
       router.push('/signin'); // Redirect if not authenticated
+      setCheckingRole(false); // Ensure checkingRole is set if user is null
       return;
     }
 
@@ -56,9 +57,11 @@ export default function AdminPage() {
       setCheckingRole(true);
       let userIsCurrentlyAdmin = false;
 
+      // First, check the hardcoded admin email
       if (user.email === ADMIN_EMAIL) {
         userIsCurrentlyAdmin = true;
       } else {
+        // If not the hardcoded email, check Firestore role
         if (db) {
           try {
             const userDocRef = doc(db, 'users', user.uid);
@@ -74,10 +77,17 @@ export default function AdminPage() {
             console.error("Error fetching user role:", error);
             toast({
               title: "Error",
-              description: "Could not verify admin role.",
+              description: "Could not verify admin role. Please check Firestore permissions.",
               variant: "destructive",
             });
+            // Fall through to potentially redirect if not admin
           }
+        } else {
+             toast({
+                title: "Database Error",
+                description: "Firestore is not available. Cannot verify admin role.",
+                variant: "destructive",
+            });
         }
       }
 
@@ -99,7 +109,17 @@ export default function AdminPage() {
   }, [user, authLoading, router, toast]);
 
   const fetchUsers = async () => {
-    if (!isAdmin || !db) return;
+    // Ensure db is available and user is admin before fetching
+    if (!db || !isAdmin) {
+        if (!isAdmin && !checkingRole) { // Only log if not admin and role check is complete
+             console.log("User is not admin, skipping fetchUsers.");
+        }
+        if (!db) {
+            console.error("Firestore DB instance is not available in fetchUsers.");
+        }
+        setLoadingUsers(false); // Ensure loading state is turned off
+        return;
+    }
     setLoadingUsers(true);
     try {
       const usersCollection = collection(db, 'users');
@@ -109,8 +129,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Error fetching users:", error);
       toast({
-        title: "Error",
-        description: "Could not fetch users data.",
+        title: "Error Fetching Users",
+        description: "Could not fetch users data. Ensure Firestore rules allow 'list' operation on 'users' collection for admins.",
         variant: "destructive",
       });
     } finally {
@@ -119,10 +139,11 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && !authLoading && !checkingRole) { // Fetch users only if isAdmin is true and checks are done
       fetchUsers();
     }
-  }, [isAdmin]); // removed toast from dependency array as fetchUsers calls it
+  }, [isAdmin, authLoading, checkingRole]);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -147,12 +168,8 @@ export default function AdminPage() {
         });
         return;
       }
-      // Note: Password for new users created by admin needs a separate mechanism
-      // This example assumes users might be created without immediate auth,
-      // or they would set their password via a reset flow.
-      // For users that need to log in, Firebase Auth creation is separate.
-      // This function only creates the Firestore document.
       const usersCollection = collection(db, 'users');
+      // Admin can create users. Firestore rules should allow this.
       await addDoc(usersCollection, {
         ...newUser,
         createdAt: serverTimestamp(),
@@ -167,8 +184,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Error creating user profile:", error);
       toast({
-        title: "Error",
-        description: "Could not create user profile. Check console for details.",
+        title: "Error Creating User",
+        description: "Could not create user profile. Ensure Firestore rules allow 'create' on 'users' for admins.",
         variant: "destructive",
       });
     }
@@ -192,8 +209,8 @@ export default function AdminPage() {
         return;
       }
       const userDocRef = doc(db, 'users', editingUser.id);
-      // Destructure to remove 'id' from the object to be updated
       const { id, ...userDataToUpdate } = editingUser;
+      // Admin can update users. Firestore rules should allow this.
       await updateDoc(userDocRef, userDataToUpdate);
 
       toast({
@@ -206,8 +223,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Error updating user:", error);
       toast({
-        title: "Error",
-        description: "Could not update user. Check console for details.",
+        title: "Error Updating User",
+        description: "Could not update user. Ensure Firestore rules allow 'update' on 'users' for admins.",
         variant: "destructive",
       });
     }
@@ -216,10 +233,9 @@ export default function AdminPage() {
 
   const handleDeleteUser = async (userId: string) => {
     if (!db || !isAdmin) return;
-    // Consider implications: deleting user from Firestore doesn't delete from Firebase Auth.
-    // Proper user deletion often involves backend functions to handle both.
     try {
       const userDocRef = doc(db, 'users', userId);
+      // Admin can delete users. Firestore rules should allow this.
       await deleteDoc(userDocRef);
 
       toast({
@@ -230,8 +246,8 @@ export default function AdminPage() {
     } catch (error) {
       console.error("Error deleting user profile:", error);
       toast({
-        title: "Error",
-        description: "Could not delete user profile. Check console for details.",
+        title: "Error Deleting User",
+        description: "Could not delete user profile. Ensure Firestore rules allow 'delete' on 'users' for admins.",
         variant: "destructive",
       });
     }
@@ -258,8 +274,6 @@ export default function AdminPage() {
   }
 
   if (!isAdmin) {
-    // This case should ideally be handled by the useEffect redirect,
-    // but as a fallback:
     return (
       <div className="flex h-screen flex-col items-center justify-center text-center">
         <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
@@ -354,7 +368,7 @@ export default function AdminPage() {
                   </table>
                 </div>
               ) : (
-                <p className="text-center text-muted-foreground">No user profiles found.</p>
+                <p className="text-center text-muted-foreground">No user profiles found. Ensure Firestore rules allow listing users for admins.</p>
               )}
 
               {/* Add New User Form */}
@@ -468,11 +482,9 @@ export default function AdminPage() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">System settings configuration will be available here.</p>
-          {/* Example:
-          <Button onClick={() => router.push('/admin/settings')}>
+          <Button onClick={() => router.push('/admin/settings')} className="mt-2">
             Configure Settings
           </Button>
-          */}
         </CardContent>
       </Card>
 
@@ -492,3 +504,4 @@ export default function AdminPage() {
     </div>
   );
 }
+

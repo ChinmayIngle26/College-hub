@@ -13,27 +13,23 @@ const inter = Inter({
   variable: '--font-sans',
 });
 
-// Removed static metadata, will generate dynamically
-// export const metadata: Metadata = {
-// title: 'Advanced Student ERP Dashboard', // This will be overridden
-// description: 'Your college dashboard',
-// };
-
 // Function to generate metadata dynamically
 export async function generateMetadata(): Promise<Metadata> {
+  let appName = 'Student ERP Dashboard'; // Default fallback title
+  let appDescription = 'Your college dashboard.'; // Default fallback description
   try {
+    // This call might fail if Firestore rules are too restrictive or DB is down
     const settings = await getSystemSettings();
-    return {
-      title: settings.applicationName || 'Student ERP Dashboard', // Fallback title
-      description: `Access your student information and services at ${settings.applicationName || 'the college dashboard'}.`,
-    };
+    appName = settings.applicationName || appName;
+    appDescription = `Access your student information and services at ${settings.applicationName || 'the college dashboard'}.`;
   } catch (error) {
-    console.error("Failed to load system settings for metadata:", error);
-    return {
-      title: 'Student ERP Dashboard', // Fallback title on error
-      description: 'Your college dashboard.',
-    };
+    console.error("Failed to load system settings for metadata, using defaults:", error);
+    // Fallback to default values is already handled by initial appName/appDescription
   }
+  return {
+    title: appName,
+    description: appDescription,
+  };
 }
 
 
@@ -42,11 +38,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Although metadata is generated server-side,
-  // we might want to update the document title on client-side navigation if settings change live,
-  // or ensure it's set correctly from the start.
-  // However, `generateMetadata` should handle the initial title for server components.
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -70,3 +61,4 @@ export default function RootLayout({
     </html>
   );
 }
+

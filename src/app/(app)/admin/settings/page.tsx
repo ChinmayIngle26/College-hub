@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client'; // Import db
 import { ShieldAlert, Settings, AlertTriangle, CheckCircle, UserPlus, Type, ListFilter, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -47,8 +48,8 @@ export default function AdminSettingsPage() {
 
   // Local state for debounced input to avoid too many Firestore writes
   const [tempAppName, setTempAppName] = useState('');
-    const [tempAnnouncementTitle, setTempAnnouncementTitle] = useState('');
-    const [tempAnnouncementContent, setTempAnnouncementContent] = useState('');
+  const [tempAnnouncementTitle, setTempAnnouncementTitle] = useState('');
+  const [tempAnnouncementContent, setTempAnnouncementContent] = useState('');
 
   useEffect(() => {
     if (authLoading) {
@@ -56,16 +57,17 @@ export default function AdminSettingsPage() {
     }
     if (!user) {
       router.push('/signin');
+      setCheckingRole(false); // Ensure checkingRole is updated
       return;
     }
 
     const checkAdminAccess = async () => {
       setCheckingRole(true);
       let userIsCurrentlyAdmin = false;
-      if (user.email === ADMIN_EMAIL) {
+      if (user.email === ADMIN_EMAIL) { // First check hardcoded admin email
         userIsCurrentlyAdmin = true;
       } else {
-        if (db) {
+        if (db) { // Check Firestore role only if db is available
           try {
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
@@ -73,16 +75,18 @@ export default function AdminSettingsPage() {
               userIsCurrentlyAdmin = true;
             }
           } catch (error) {
-            console.error("Error fetching user role:", error);
-            toast({ title: "Error", description: "Could not verify admin role.", variant: "destructive" });
+            console.error("Error fetching user role for admin settings:", error);
+            toast({ title: "Error", description: "Could not verify admin role. Check Firestore permissions.", variant: "destructive" });
           }
+        } else {
+            toast({ title: "Database Error", description: "Firestore is not available. Cannot verify admin role.", variant: "destructive" });
         }
       }
 
       if (userIsCurrentlyAdmin) {
         setIsAdmin(true);
       } else {
-        toast({ title: "Access Denied", description: "You do not have permission.", variant: "destructive" });
+        toast({ title: "Access Denied", description: "You do not have permission to view this page.", variant: "destructive" });
         router.push('/');
       }
       setCheckingRole(false);
@@ -92,22 +96,28 @@ export default function AdminSettingsPage() {
 
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && !checkingRole && !authLoading) { // Fetch settings only if admin and all checks passed
       const fetchSettings = async () => {
         setLoadingSettings(true);
         setErrorSettings(null);
+        if (!db) { // Check db again before service call
+          setErrorSettings("Database connection is not available for settings.");
+          setLoadingSettings(false);
+          toast({ title: "Database Error", description: "Cannot load system settings.", variant: "destructive" });
+          return;
+        }
         try {
           const currentSettings = await getSystemSettings();
           setSettings(currentSettings);
-          setTempAppName(currentSettings.applicationName); // Initialize tempAppName
-            setTempAnnouncementTitle(currentSettings.announcementTitle);
-            setTempAnnouncementContent(currentSettings.announcementContent);
+          setTempAppName(currentSettings.applicationName);
+          setTempAnnouncementTitle(currentSettings.announcementTitle);
+          setTempAnnouncementContent(currentSettings.announcementContent);
         } catch (error) {
           console.error("Error fetching system settings:", error);
-          setErrorSettings("Could not load system settings. Please try again.");
+          setErrorSettings("Could not load system settings. Please ensure Firestore rules allow reading 'systemSettings/appConfiguration'.");
           toast({
-            title: "Error",
-            description: "Failed to load system settings.",
+            title: "Error Loading Settings",
+            description: "Failed to load system settings. Check permissions.",
             variant: "destructive",
           });
         } finally {
@@ -116,15 +126,19 @@ export default function AdminSettingsPage() {
       };
       fetchSettings();
     }
-  }, [isAdmin, toast]);
+  }, [isAdmin, checkingRole, authLoading, toast]);
 
   const handleSettingUpdate = async (key: keyof SystemSettings, value: any, successMessage: string) => {
-    if (!settings) return;
+    if (!settings || !isAdmin) return; // Ensure user is admin
+    if (!db) { // Check db before service call
+        toast({ title: "Database Error", description: "Cannot update settings.", variant: "destructive" });
+        return;
+    }
 
     const newSettings: Partial<SystemSettings> = { [key]: value };
     try {
       await updateSystemSettings(newSettings);
-      setSettings(prev => prev ? { ...prev, [key]: value } : null); // Optimistic update
+      setSettings(prev => prev ? { ...prev, [key]: value } : null);
       toast({
         title: "Settings Updated",
         description: successMessage,
@@ -134,21 +148,17 @@ export default function AdminSettingsPage() {
       console.error(`Error updating ${key}:`, error);
       toast({
         title: "Update Failed",
-        description: `Could not update ${key}.`,
+        description: `Could not update ${key}. Ensure Firestore rules allow writing to 'systemSettings/appConfiguration' for admins.`,
         variant: "destructive",
       });
-      // Revert UI change on error by refetching
-      const currentSettings = await getSystemSettings();
-      setSettings(currentSettings);
-      if (key === 'applicationName') {
-        setTempAppName(currentSettings.applicationName);
+      // Revert UI change on error by refetching if db is available
+      if(db) {
+        const currentSettings = await getSystemSettings();
+        setSettings(currentSettings);
+        if (key === 'applicationName') setTempAppName(currentSettings.applicationName);
+        if (key === 'announcementTitle') setTempAnnouncementTitle(currentSettings.announcementTitle);
+        if (key === 'announcementContent') setTempAnnouncementContent(currentSettings.announcementContent);
       }
-        if (key === 'announcementTitle') {
-            setTempAnnouncementTitle(currentSettings.announcementTitle);
-        }
-        if (key === 'announcementContent') {
-            setTempAnnouncementContent(currentSettings.announcementContent);
-        }
     }
   };
 
@@ -163,21 +173,21 @@ export default function AdminSettingsPage() {
   const debouncedUpdateApplicationName = useCallback(
     debounce((newName: string) => {
       handleSettingUpdate('applicationName', newName, `Application name updated to "${newName}".`);
-    }, 1000), // 1 second debounce
-    [settings] // Recreate if settings (and thus handleSettingUpdate) changes identity
+    }, 1000), 
+    [settings, isAdmin] // Recreate if settings or isAdmin changes
   );
     const debouncedUpdateAnnouncementTitle = useCallback(
         debounce((newTitle: string) => {
             handleSettingUpdate('announcementTitle', newTitle, `Announcement title updated to "${newTitle}".`);
-        }, 1000), // 1 second debounce
-        [settings] // Recreate if settings changes identity
+        }, 1000), 
+        [settings, isAdmin] 
     );
 
     const debouncedUpdateAnnouncementContent = useCallback(
         debounce((newContent: string) => {
             handleSettingUpdate('announcementContent', newContent, 'Announcement content updated.');
-        }, 1000), // 1 second debounce
-        [settings] // Recreate if settings changes identity
+        }, 1000), 
+        [settings, isAdmin] 
     );
 
   const handleTempApplicationNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,12 +210,9 @@ export default function AdminSettingsPage() {
   const handleDefaultItemsPerPageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
     if (!isNaN(value) && value > 0) {
-      // Debounce or immediate update? For numbers, immediate might be fine, or also debounce.
-      // For simplicity, using immediate update here.
       handleSettingUpdate('defaultItemsPerPage', value, `Default items per page set to ${value}.`);
     } else if (e.target.value === '') {
-      // Allow clearing the input, but don't update Firestore with empty or invalid
-      // Or handle validation more strictly
+      // Allow clear, but maybe set a default if empty? Or validate on blur.
     }
   };
 
@@ -232,7 +239,7 @@ export default function AdminSettingsPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin) { // This should be caught by useEffect redirect, but as a fallback
     return (
       <div className="flex h-screen flex-col items-center justify-center text-center p-6">
         <Card className="w-full max-w-md shadow-lg">
@@ -272,6 +279,15 @@ export default function AdminSettingsPage() {
       </div>
      )
   }
+  
+  if (!settings && !loadingSettings) { // Handle case where settings are null after loading (e.g. error during fetch handled by returning default)
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <p className="text-destructive">System settings could not be loaded. Defaults are in effect. Please check console.</p>
+      </div>
+    )
+  }
+
 
   return (
     <div className="space-y-6">
@@ -444,3 +460,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
