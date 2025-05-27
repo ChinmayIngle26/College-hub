@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { getSystemSettings } from '@/services/system-settings';
 import type { SystemSettings } from '@/services/system-settings';
+import { Skeleton } from '@/components/ui/skeleton'; // Added Skeleton import
 
 // Schema including name, studentId, major, and parentEmail
 const signUpSchema = z.object({
