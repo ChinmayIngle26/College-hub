@@ -1,17 +1,17 @@
 
 import type { Metadata } from 'next';
-// Removed Inter font import: import { Inter } from 'next/font/google';
+import { Inter } from 'next/font/google'; // Import Inter
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/context/auth-context';
 import { ThemeProvider } from '@/context/theme-provider';
-import { getSystemSettings } from '@/services/system-settings'; // Import for fetching settings
+import { getSystemSettings } from '@/services/system-settings';
 
-// const inter = Inter({
-//   subsets: ['latin'],
-//   variable: '--font-sans', // Defines the CSS variable name as --font-sans
-// });
+const inter = Inter({ // Initialize Inter font
+  subsets: ['latin'],
+  variable: '--font-sans', // Define CSS variable
+});
 
 // Default values for metadata
 const DEFAULT_APP_NAME = 'College Hub';
@@ -44,10 +44,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body
         className={cn(
-          'min-h-screen bg-background font-sans antialiased' // font-sans will now use Tailwind's default
+          'min-h-screen bg-background font-sans antialiased'
         )}
       >
         <AuthProvider>

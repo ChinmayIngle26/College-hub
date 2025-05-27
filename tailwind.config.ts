@@ -1,5 +1,6 @@
+
 import type { Config } from "tailwindcss";
-import defaultTheme from 'tailwindcss/defaultTheme'; // Import defaultTheme
+import defaultTheme from 'tailwindcss/defaultTheme';
 
 export default {
     darkMode: ["class"],
@@ -9,7 +10,7 @@ export default {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    container: { // Add container settings
+    container: {
       center: true,
       padding: "2rem",
       screens: {
@@ -18,7 +19,7 @@ export default {
     },
   	extend: {
       fontFamily: {
-        sans: [...defaultTheme.fontFamily.sans], // Removed 'var(--font-sans)'
+        sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans], // Use the CSS variable for Inter
       },
   		colors: {
   			background: 'hsl(var(--background))',
