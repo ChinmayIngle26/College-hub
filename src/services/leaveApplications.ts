@@ -1,6 +1,6 @@
 
-'use server';
-import { db } from '@/lib/firebase/client';
+// 'use server'; // REMOVED: To allow client-side calls to getLeaveApplicationsByStudentId with client auth context
+import { db, auth } from '@/lib/firebase/client'; // Ensure auth is imported
 import { collection, addDoc, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from 'firebase/firestore';
 import type { LeaveApplication, LeaveApplicationFormData } from '@/types/leave';
 import type { StudentProfile } from './profile';
@@ -10,40 +10,36 @@ const USERS_COLLECTION = 'users';
 
 /**
  * Adds a new leave application to Firestore.
+ * This function is typically called from a Server Action.
  */
 export async function addLeaveApplication(
   studentId: string,
   formData: LeaveApplicationFormData
 ): Promise<string> {
   if (!db) {
-    throw new Error('Firestore is not initialized.');
+    throw new Error('Firestore is not initialized for addLeaveApplication.');
   }
   if (!studentId) {
     console.error('addLeaveApplication: studentId is null or undefined.');
     throw new Error('Student ID is required to add a leave application.');
   }
 
-
-  // Fetch student details (name, parentEmail)
   const userDocRef = doc(db, USERS_COLLECTION, studentId);
   const userDocSnap = await getDoc(userDocRef);
 
   if (!userDocSnap.exists()) {
-    throw new Error('Student profile not found.');
+    throw new Error(`Student profile not found for studentId: ${studentId}.`);
   }
   const studentData = userDocSnap.data() as StudentProfile & { parentEmail?: string };
 
   if (!studentData.parentEmail) {
-    // This could be a scenario where parentEmail is optional or not yet set
-    console.warn(`Parent's email not found in student profile for studentId: ${studentId}. Leave application will be submitted without parent notification if this field is crucial for it.`);
-    // Depending on policy, you might throw an error or allow submission without parentEmail.
-    // For now, we'll allow it, but the notification flow needs to handle missing parentEmail.
+    console.warn(`Parent's email not found in student profile for studentId: ${studentId}. Application will proceed.`);
   }
 
   const newLeaveApplication: Omit<LeaveApplication, 'id'> = {
     studentId,
     studentName: studentData.name || 'N/A',
-    parentEmail: studentData.parentEmail || '', // Store empty string if not found, or handle differently
+    parentEmail: studentData.parentEmail || '',
     leaveType: formData.leaveType,
     startDate: Timestamp.fromDate(formData.startDate),
     endDate: Timestamp.fromDate(formData.endDate),
@@ -71,18 +67,30 @@ export async function addLeaveApplication(
 
 /**
  * Retrieves all leave applications for a specific student.
+ * This function can be called from client-side components.
  */
 export async function getLeaveApplicationsByStudentId(studentId: string): Promise<LeaveApplication[]> {
-  if (!db) {
-    console.error('getLeaveApplicationsByStudentId: Firestore DB instance is not available.');
-    throw new Error('Database connection error.');
+  console.log(`getLeaveApplicationsByStudentId: Called for studentId: '${studentId}'`);
+
+  if (!db || !auth) { // Check auth as well
+    console.error('getLeaveApplicationsByStudentId: Firestore DB or Auth instance is not available.');
+    throw new Error('Database or Auth connection error. Ensure Firebase is initialized on the client.');
   }
   if (!studentId) {
-    console.error('getLeaveApplicationsByStudentId: studentId is null or undefined.');
+    console.error('getLeaveApplicationsByStudentId: studentId is null, undefined, or empty.');
     throw new Error('Student ID is required to fetch leave applications.');
   }
 
-  console.log(`getLeaveApplicationsByStudentId: Fetching applications for studentId: ${studentId}`);
+  // Log current user from client-side auth, if available (for debugging)
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    console.log(`getLeaveApplicationsByStudentId: Current Firebase Auth user on client: ${currentUser.uid} (Email: ${currentUser.email})`);
+    if (currentUser.uid !== studentId) {
+        console.warn(`getLeaveApplicationsByStudentId: WARNING - Querying for studentId '${studentId}' but current auth user is '${currentUser.uid}'. This might lead to permission issues if rules expect these to match.`);
+    }
+  } else {
+    console.warn(`getLeaveApplicationsByStudentId: No current Firebase Auth user found on client. This will likely cause permission denied if rules require authentication.`);
+  }
 
   const q = query(
     collection(db, LEAVE_APPLICATIONS_COLLECTION),
@@ -94,17 +102,13 @@ export async function getLeaveApplicationsByStudentId(studentId: string): Promis
     const querySnapshot = await getDocs(q);
     const applications = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      // Helper to safely convert Firestore Timestamp or plain object to Timestamp
       const toTimestamp = (field: any): Timestamp => {
-        if (field instanceof Timestamp) {
-          return field;
-        }
+        if (field instanceof Timestamp) return field;
         if (field && typeof field.seconds === 'number' && typeof field.nanoseconds === 'number') {
           return new Timestamp(field.seconds, field.nanoseconds);
         }
-        // Fallback for invalid or missing date, adjust as needed
         console.warn(`Invalid timestamp data for field in doc ${doc.id}:`, field);
-        return Timestamp.now(); // Or some other default/error indicator
+        return Timestamp.now();
       };
       return {
         id: doc.id,
@@ -118,16 +122,14 @@ export async function getLeaveApplicationsByStudentId(studentId: string): Promis
     return applications;
   } catch (error) {
     console.error(`Error fetching leave applications for studentId ${studentId}:`, error);
-    if (error instanceof Error && 'code' in error) {
-      const firebaseError = error as { code: string; message: string };
-      if (firebaseError.code === 'permission-denied') {
-        console.error(`Firebase permission denied while fetching leave applications. Ensure rules allow read for studentId: ${studentId}`);
-        throw new Error(`Permission denied when fetching leave applications. Please check Firestore rules.`);
-      } else if (firebaseError.code === 'failed-precondition') {
-        console.error(`Firebase 'failed-precondition' error. This might be due to a missing Firestore index. Check server logs for an index creation link for collection '${LEAVE_APPLICATIONS_COLLECTION}' with query on 'studentId' and 'appliedAt'.`);
-        throw new Error(`Query requires an index. Please check Firestore indexes for the '${LEAVE_APPLICATIONS_COLLECTION}' collection. The query involved 'studentId' equality and 'appliedAt' ordering.`);
-      }
+    const firebaseError = error as { code?: string; message: string };
+    if (firebaseError.code === 'permission-denied') {
+      console.error(`Firebase permission denied for studentId: ${studentId}. This often means rules are too restrictive OR a required Firestore index is missing for the query (collection: '${LEAVE_APPLICATIONS_COLLECTION}', where 'studentId' == '${studentId}', orderBy 'appliedAt' desc).`);
+      throw new Error(`Permission denied when fetching leave applications. Please check Firestore rules AND ensure the composite index (studentId ASC, appliedAt DESC) exists for the '${LEAVE_APPLICATIONS_COLLECTION}' collection.`);
+    } else if (firebaseError.code === 'failed-precondition') {
+      console.error(`Firebase 'failed-precondition' for studentId: ${studentId}. This usually means a required Firestore index is missing. Please create a composite index on '${LEAVE_APPLICATIONS_COLLECTION}' for 'studentId' (Ascending) and 'appliedAt' (Descending).`);
+      throw new Error(`Query requires an index. Please create a composite index on '${LEAVE_APPLICATIONS_COLLECTION}' for 'studentId' (Ascending) and 'appliedAt' (Descending).`);
     }
-    throw new Error(`Could not fetch leave applications. Original error: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Could not fetch leave applications. Original error: ${firebaseError.message}`);
   }
 }
