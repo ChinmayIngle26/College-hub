@@ -71,11 +71,12 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:xxxxxxxxxxxxxxxxxxxxxx
 
 # Nodemailer SMTP Configuration (for sending emails)
 # Replace with your actual SMTP server details and credentials
-SENDER_EMAIL=noreply@example.com
+# See section "7. Email Configuration (Nodemailer)" for detailed setup, including Gmail specifics.
+SENDER_EMAIL=your-sender-email@example.com
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587 # Or 465 for SSL
 SMTP_USER=your_smtp_username
-SMTP_PASS=your_smtp_password
+SMTP_PASS=your_smtp_password_or_app_password
 
 # Firebase Admin SDK (Optional, for server-side operations if needed, e.g., token verification)
 # If you are using Firebase Admin SDK for server-side operations (like in src/lib/firebase/admin.ts),
@@ -146,15 +147,16 @@ For the leave application notifications to be sent to parents, you need to confi
 
 **a. Obtain SMTP Credentials:**
    You will need the following from your email provider (e.g., Gmail, SendGrid, Mailgun, AWS SES, or your own SMTP server):
-   - Sender Email Address (the "From" address)
-   - SMTP Host (e.g., `smtp.gmail.com`)
-   - SMTP Port (e.g., `587` for TLS, `465` for SSL)
-   - SMTP Username
-   - SMTP Password (or App Password if using Gmail with 2FA)
+   - Sender Email Address (the "From" address, e.g., `chinmayingle26@gmail.com` if using your Gmail)
+   - SMTP Host (e.g., `smtp.gmail.com` for Gmail)
+   - SMTP Port (e.g., `587` for TLS with Gmail, or `465` for SSL)
+   - SMTP Username (e.g., `chinmayingle26@gmail.com` for Gmail)
+   - SMTP Password (your Gmail password or an App Password if using Gmail with 2FA)
 
 **b. Set Environment Variables:**
-   Add these credentials to your `.env.local` file as shown in Step 4. For example:
+   Add these credentials to your `.env.local` file as shown in Step 4. For example, if you were using a general SMTP provider:
    ```env
+   # General SMTP Example
    SENDER_EMAIL=your-sender-email@example.com
    SMTP_HOST=smtp.yourprovider.com
    SMTP_PORT=587
@@ -163,11 +165,46 @@ For the leave application notifications to be sent to parents, you need to confi
    ```
    **Never commit your SMTP password directly into your code or repository.**
 
-**c. Gmail Specifics (if using Gmail):**
-   - If you're using a Gmail account, you might need to:
-     - Enable "Less secure app access" in your Google account settings (not recommended for production).
-     - Or, preferably, generate an "App Password" if you have 2-Step Verification enabled for your Google account. Use this App Password as your `SMTP_PASS`.
-   - Gmail has sending limits for free accounts. For production, consider a dedicated transactional email service.
+**c. Gmail Specifics (if using Gmail with `chinmayingle26@gmail.com`):**
+
+   If you're using your Gmail account (`chinmayingle26@gmail.com`) to send emails, you have two main options:
+
+   **Option 1: Use an App Password (Recommended if you have 2-Step Verification enabled)**
+   This is the more secure method.
+   1.  **Enable 2-Step Verification:** If not already enabled, go to your Google Account settings ([https://myaccount.google.com/security](https://myaccount.google.com/security)) and enable 2-Step Verification.
+   2.  **Generate an App Password:**
+       *   Go to App passwords: [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (you might need to sign in again).
+       *   Under "Select app," choose "Mail."
+       *   Under "Select device," choose "Other (Custom name)." Enter a name like "StudentERP App."
+       *   Click "Generate."
+       *   Google will display a 16-character App Password. **Copy this password immediately and save it securely.** You won't be able to see it again.
+   3.  **Update `.env.local` for Gmail with App Password:**
+       ```env
+       # .env.local (Gmail with App Password Example)
+       SENDER_EMAIL=chinmayingle26@gmail.com
+       SMTP_HOST=smtp.gmail.com
+       SMTP_PORT=587
+       SMTP_USER=chinmayingle26@gmail.com
+       SMTP_PASS=YOUR_16_CHARACTER_APP_PASSWORD # Paste the App Password here
+       ```
+
+   **Option 2: Enable "Less Secure App Access" (Not Recommended; May Not Be Available)**
+   This method is less secure and Google is phasing it out.
+   1.  Go to [https://myaccount.google.com/lesssecureapps](https://myaccount.google.com/lesssecureapps) and turn the setting ON for `chinmayingle26@gmail.com`.
+       *   If this option is not available, you MUST use an App Password.
+   2.  **Update `.env.local` for Gmail with Less Secure App Access:**
+       ```env
+       # .env.local (Gmail with Less Secure App Access - Not Recommended)
+       SENDER_EMAIL=chinmayingle26@gmail.com
+       SMTP_HOST=smtp.gmail.com
+       SMTP_PORT=587
+       SMTP_USER=chinmayingle26@gmail.com
+       SMTP_PASS=YOUR_REGULAR_GMAIL_PASSWORD # Your chinmayingle26@gmail.com password
+       ```
+
+   **Important Gmail Notes:**
+   *   Gmail has sending limits for free accounts (typically 100-500 emails per day). For a production application, consider a dedicated transactional email service (SendGrid, Resend, AWS SES, etc.).
+   *   If emails are not sending, Google might be temporarily blocking sign-in attempts it deems suspicious. Check your Gmail security activity.
 
 **d. Restart Development Server:**
    After setting these environment variables, restart your development server (`npm run dev`). The server console should indicate if Nodemailer was able to initialize correctly or if there were configuration issues.
@@ -201,10 +238,10 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   **4. Verify User Authentication & Student ID**: Ensure the user is signed in. For operations like fetching leave applications, confirm the `studentId` being queried matches `request.auth.uid` as per your rules.
     *   **5. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test operations.
 *   **Email Not Sending (Leave Notifications)**:
-    *   **Check Nodemailer Configuration:** Ensure `SENDER_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS` are correctly set in `.env.local`.
+    *   **Check Nodemailer Configuration:** Ensure `SENDER_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS` are correctly set in `.env.local`. See Step 7 for Gmail specifics.
     *   **Restart Server:** Restart the dev server after changing `.env.local`.
     *   **Check Server Logs:** Look for Nodemailer errors or success messages in your Next.js server console output.
-    *   **SMTP Provider Issues:** Verify your SMTP credentials are correct and your provider isn't blocking the connection (e.g., firewall, rate limits, security settings like Gmail's "less secure app access").
+    *   **SMTP Provider Issues:** Verify your SMTP credentials are correct and your provider isn't blocking the connection (e.g., firewall, rate limits, security settings like Gmail's "less secure app access" or App Password requirements).
     *   **Spam Folder:** Check the recipient's spam/junk folder.
 *   **Blank screen after login/redirect issues**:
     *   Check the browser console for errors.
@@ -219,5 +256,3 @@ The application should now be running, typically at `http://localhost:9002` (as 
 *   Implement admin functionalities for managing leave applications (approve/reject).
 *   Consider a more robust email solution for production (e.g., SendGrid, Resend) if Nodemailer with a personal SMTP has limitations.
 
-
-```
