@@ -9,67 +9,64 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email == "admin@gmail.com";
     }
 
-    // Users collection
+    // --- Users Collection ---
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Users can create their own profile document during signup
+      // Allow users to create their own profile
       allow create: if request.auth != null && request.auth.uid == userId;
-      // Users can update their own profile, admins can update any
+      // Allow users to read their own profile, or admins to read any profile
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Allow users to update their own profile (including parentEmail), or admins to update any profile
       allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Only admins can delete user profiles from the admin panel
-      allow delete: if request.auth != null && isAdmin();
+      // Only admins can delete user profiles from Firestore
+      // (Note: This doesn't delete the Firebase Auth user)
+      allow delete: if isAdmin();
 
-      // Prevent access to subcollections within a user document unless specified
+      // Disallow access to subcollections under users for now
       match /{document=**} {
         allow read, write: if false;
       }
     }
 
-    // System Settings
-    // Publicly readable for app config, admin write only
-    match /systemSettings/{docId} {
-      allow read: if true; // App configuration needs to be readable by all (e.g., for metadata, maintenance status)
-      allow create, update, delete: if request.auth != null && isAdmin();
+    // --- System Settings Collection ---
+    // Singleton document for app-wide settings
+    match /systemSettings/{docId} { // docId would typically be 'appConfiguration'
+      // Anyone can read system settings (e.g., for maintenance mode check, app name)
+      allow read: if true; // Public read access
+      // Only admins can create, update, or delete system settings
+      allow create, update, delete: if isAdmin();
 
-      // Prevent access to subcollections
+      // Disallow access to subcollections under systemSettings
       match /{document=**} {
         allow read, write: if false;
       }
     }
 
-    // Leave Applications
-    // Rules for individual document access
+    // --- Leave Applications Collection ---
     match /leaveApplications/{applicationId} {
-      // Students can create their own applications
+      // Students can create their own leave applications
       allow create: if request.auth != null && request.resource.data.studentId == request.auth.uid;
-
-      // Students can read their own applications, admins can read any
+      // Students can read their own applications; Admins can read any application
       allow read: if request.auth != null && (resource.data.studentId == request.auth.uid || isAdmin());
+      // Only admins can update (e.g., approve/reject status) or delete applications
+      allow update, delete: if isAdmin();
 
-      // Admins can update/delete any application (e.g., to change status)
-      // Students should not be able to update/delete their applications directly once submitted
-      allow update, delete: if request.auth != null && isAdmin();
+      // Disallow listing directly on a specific document path
+      allow list: if false;
     }
 
-    // Rules for querying the /leaveApplications collection
+    // Rules for querying the leaveApplications collection
     match /leaveApplications {
-      // Allow list operation if:
-      // 1. The user is an admin (can list all applications).
-      // OR
-      // 2. The authenticated user is querying for their own applications.
-      //    This relies on the client-side query including `where('studentId', '==', request.auth.uid)`.
-      //    Firestore security rules for list operations check if the query *could* return documents
-      //    that the user is not allowed to read based on document-level 'read' rules.
-      //    The `request.query.filters` approach is more robust for explicitly allowing scoped queries.
-      allow list: if request.auth != null && 
-                    (isAdmin() || 
-                     (request.query.filters.find(f => f[0] == 'studentId' && f[1] == '==' && f[2] == request.auth.uid) != null)
-                    );
+      // Allow authenticated users to query (list) the collection.
+      // Document-level read rules and client-side queries (e.g., where('studentId', '==', auth.uid))
+      // will ensure they only retrieve documents they are permitted to read.
+      allow list: if request.auth != null;
+      // Create is handled at the document level (/{applicationId})
+      allow create: if false; // Cannot create at collection level
+      allow read, update, delete: if false; // Operations on the collection path itself are disallowed.
     }
 
-    // Fallback for any other unspecified paths - deny all
-    // This ensures that any path not explicitly matched above is secured by default.
-    match /{path=**}/documents/{document} {
+    // Deny all other access by default to any other unspecified paths
+    match /{document=**} {
       allow read, write: if false;
     }
   }
