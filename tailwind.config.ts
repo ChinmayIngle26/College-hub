@@ -18,7 +18,7 @@ export default {
     },
   	extend: {
       fontFamily: {
-        sans: ['var(--font-sans)', ...defaultTheme.fontFamily.sans],
+        sans: [...defaultTheme.fontFamily.sans], // Removed 'var(--font-sans)'
       },
   		colors: {
   			background: 'hsl(var(--background))',
