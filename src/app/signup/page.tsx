@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,23 +9,23 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase/client'; // Correct import path
+import { auth, db } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// import { Label } from '@/components/ui/label'; // Removed unused Label import
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { getSystemSettings } from '@/services/system-settings'; // Import settings service
+import { getSystemSettings } from '@/services/system-settings';
 import type { SystemSettings } from '@/services/system-settings';
 
-// Schema including name, studentId, and major
+// Schema including name, studentId, major, and parentEmail
 const signUpSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
   studentId: z.string().min(1, { message: 'Student ID is required.' }),
   major: z.string().min(1, { message: 'Major is required.' }),
   email: z.string().email({ message: 'Invalid email address.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
+  parentEmail: z.string().email({ message: "Invalid parent's email address." }),
 });
 
 type SignUpFormValues = z.infer<typeof signUpSchema>;
@@ -65,8 +64,6 @@ export default function SignUpPage() {
           description: "Could not load application settings. Please try again later.",
           variant: "destructive",
         });
-        // Optionally, prevent sign-up if settings can't be loaded
-        // setSystemSettings({ allowNewUserRegistration: false }); // Default to no registration on error
       } finally {
         setLoadingSettings(false);
       }
@@ -83,6 +80,7 @@ export default function SignUpPage() {
       major: '',
       email: '',
       password: '',
+      parentEmail: '',
     },
   });
 
@@ -110,7 +108,6 @@ export default function SignUpPage() {
     }
 
 
-    // Check if Firebase was initialized correctly
     if (!auth || !db) {
         toast({
             title: 'Initialization Error',
@@ -118,38 +115,34 @@ export default function SignUpPage() {
             variant: 'destructive',
         });
         setLoading(false);
-        return; // Stop the submission
+        return;
     }
 
 
     try {
-      // Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // Save additional user data to Firestore
-      // Use user.uid as the document ID in the 'users' collection
       await setDoc(doc(db, 'users', user.uid), {
         name: data.name,
         studentId: data.studentId,
         major: data.major,
-        email: data.email, // Store email for potential future use
-        role: 'student' // Default role, can be changed later by admin
+        email: data.email,
+        parentEmail: data.parentEmail, // Save parent's email
+        role: 'student'
       });
 
-      // --- Set auth cookie on successful sign-up ---
       const idToken = await user.getIdToken();
-      setCookie('firebaseAuthToken', idToken, 1); // Set cookie (e.g., expires in 1 day)
+      setCookie('firebaseAuthToken', idToken, 1);
 
 
       toast({
         title: 'Sign Up Successful',
         description: 'Your account has been created.',
       });
-      router.push('/'); // Redirect to dashboard on successful sign-up
+      router.push('/');
     } catch (error: any) {
       console.error('Sign up error:', error);
-      // Provide more specific error messages
        let description = 'An unexpected error occurred. Please try again.';
        if (error.code === 'auth/email-already-in-use') {
            description = 'This email address is already in use.';
@@ -224,7 +217,7 @@ export default function SignUpPage() {
                   <FormItem>
                     <FormLabel>Student ID</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., 12345" {...field} />
+                      <Input placeholder="e.g., S12345" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -264,6 +257,19 @@ export default function SignUpPage() {
                     <FormLabel>Password</FormLabel>
                     <FormControl>
                       <Input type="password" placeholder="••••••••" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="parentEmail"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parent&apos;s Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="parent@example.com" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

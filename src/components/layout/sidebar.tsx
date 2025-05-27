@@ -13,7 +13,7 @@ import {
   Vote,
   LogIn,
   LogOut,
-  // School, // Replaced by Image
+  ClipboardEdit, // Icon for Leave Application
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
@@ -21,7 +21,7 @@ import { auth } from '@/lib/firebase/client';
 import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { ThemeToggle } from './theme-toggle'; // Import ThemeToggle
+import { ThemeToggle } from './theme-toggle';
 
 const navigationItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -30,6 +30,7 @@ const navigationItems = [
   { href: '/grades', label: 'Grades', icon: GraduationCap },
   { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
   { href: '/voting', label: 'Voting System', icon: Vote },
+  { href: '/leave-application', label: 'Leave Application', icon: ClipboardEdit },
 ];
 
 function deleteCookie(name: string) {
@@ -74,9 +75,8 @@ export function Sidebar() {
   };
 
   if (loading) {
-    // Basic skeleton for sidebar loading state
     return (
-      <aside className="w-64 bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg">
+      <aside className="w-64 bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border">
         <div>
           <div className="flex items-center space-x-3 mb-10">
             <div className="w-10 h-10 bg-muted rounded-md animate-pulse"></div>
@@ -86,7 +86,7 @@ export function Sidebar() {
             </div>
           </div>
           <nav className="space-y-2">
-            {[...Array(6)].map((_, i) => (
+            {navigationItems.map((_, i) => ( // Adjusted for new item
               <div key={i} className="h-10 bg-muted rounded-md animate-pulse"></div>
             ))}
           </nav>
@@ -136,7 +136,7 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto space-y-2">
-        <ThemeToggle /> {/* Add ThemeToggle to the main sidebar */}
+        <ThemeToggle />
         {user ? (
           <Button
             variant="ghost"
@@ -160,4 +160,3 @@ export function Sidebar() {
     </aside>
   );
 }
-
