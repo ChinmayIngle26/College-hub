@@ -4,70 +4,72 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if the user is an admin
+    // Helper function to check for admin role
+    // It checks if the authenticated user's email is 'admin@gmail.com'.
     function isAdmin() {
       return request.auth != null && request.auth.token.email == "admin@gmail.com";
     }
 
-    // --- Users Collection ---
+    // User profiles
+    // - Users can create their own profile document.
+    // - Users can read and update their own profile document.
+    // - Admins can read, update, and delete any user profile document.
     match /users/{userId} {
-      // Allow users to create their own profile
       allow create: if request.auth != null && request.auth.uid == userId;
-      // Allow users to read their own profile, or admins to read any profile
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Allow users to update their own profile (including parentEmail), or admins to update any profile
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Only admins can delete user profiles from Firestore
-      // (Note: This doesn't delete the Firebase Auth user)
+      allow read, update: if request.auth != null && (request.auth.uid == userId || isAdmin());
       allow delete: if isAdmin();
 
-      // Disallow access to subcollections under users for now
+      // Disallow direct access to any subcollections under users unless explicitly defined later.
       match /{document=**} {
         allow read, write: if false;
       }
     }
 
-    // --- System Settings Collection ---
-    // Singleton document for app-wide settings
-    match /systemSettings/{docId} { // docId would typically be 'appConfiguration'
-      // Anyone can read system settings (e.g., for maintenance mode check, app name)
-      allow read: if true; // Public read access
-      // Only admins can create, update, or delete system settings
-      allow create, update, delete: if isAdmin();
+    // System-wide settings
+    // The 'appConfiguration' document in 'systemSettings' collection:
+    // - Should be publicly readable for application configuration (e.g., by middleware, metadata generation).
+    // - Should only be writable (create, update, delete) by admins.
+    match /systemSettings/appConfiguration { // Be specific about the document ID if it's a singleton
+      allow read: if true;
+      allow write: if isAdmin(); // Consolidates create, update, delete
 
-      // Disallow access to subcollections under systemSettings
+      // Disallow direct access to any subcollections under this specific settings document.
       match /{document=**} {
         allow read, write: if false;
       }
     }
+    // If you have other documents in systemSettings, define rules for them or a general rule for /systemSettings/{docId}
+     match /systemSettings/{docId} { // General rule for other docs if appConfiguration is the main one
+        allow read: if isAdmin(); // Or true if others also need to be public
+        allow write: if isAdmin();
+     }
 
-    // --- Leave Applications Collection ---
+
+    // Leave Applications
+    // Document-level rules for individual leave applications.
     match /leaveApplications/{applicationId} {
-      // Students can create their own leave applications
+      // Students can create their own applications.
+      // Ensures the 'studentId' field in the new document matches the authenticated user's UID.
       allow create: if request.auth != null && request.resource.data.studentId == request.auth.uid;
-      // Students can read their own applications; Admins can read any application
+
+      // Students can read their own applications.
+      // Admins can read any application.
       allow read: if request.auth != null && (resource.data.studentId == request.auth.uid || isAdmin());
-      // Only admins can update (e.g., approve/reject status) or delete applications
+
+      // Only admins can update (e.g., change status) or delete leave applications.
       allow update, delete: if isAdmin();
-
-      // Disallow listing directly on a specific document path
-      allow list: if false;
     }
 
-    // Rules for querying the leaveApplications collection
+    // Collection-level query (list) rule for the 'leaveApplications' collection.
+    // Authenticated users are allowed to perform queries (list operations).
+    // The actual documents returned by a query are still governed by the document-level 'read' rule above.
+    // This means a student's query will only return their own applications due to the per-document read check.
     match /leaveApplications {
-      // Allow authenticated users to query (list) the collection.
-      // Document-level read rules and client-side queries (e.g., where('studentId', '==', auth.uid))
-      // will ensure they only retrieve documents they are permitted to read.
       allow list: if request.auth != null;
-      // Create is handled at the document level (/{applicationId})
-      allow create: if false; // Cannot create at collection level
-      allow read, update, delete: if false; // Operations on the collection path itself are disallowed.
     }
 
-    // Deny all other access by default to any other unspecified paths
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    // By default, access to any other path not explicitly matched above is denied.
+    // No explicit global deny `match /{path=**}/documents/{document} { allow read, write: if false; }`
+    // is strictly necessary, as rules are deny-by-default.
   }
 }
