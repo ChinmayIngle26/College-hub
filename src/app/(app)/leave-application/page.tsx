@@ -1,8 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useActionState } from 'react'; // Changed useFormState to useActionState
-// import { useFormState } from 'react-dom'; // Removed
+import { useEffect, useState, useActionState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -45,23 +44,23 @@ const initialFormState: SubmitLeaveApplicationState = { success: false, message:
 export default function LeaveApplicationPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  
-  const [formState, formAction, isPending] = useActionState( // Updated to useActionState and isPending
-    (prevState: SubmitLeaveApplicationState | null, formData: FormData) => 
+
+  const [formState, formAction, isPending] = useActionState(
+    (prevState: SubmitLeaveApplicationState | null, formData: FormData) =>
       user ? submitLeaveApplicationAction(user.uid, prevState, formData) : Promise.resolve({ success: false, message: "User not authenticated."}),
     initialFormState
   );
-  
+
   const [pastApplications, setPastApplications] = useState<LeaveApplication[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
 
   const form = useForm<LeaveApplicationFormData>({
     resolver: zodResolver(leaveApplicationClientSchema),
     defaultValues: {
-      leaveType: undefined,
-      startDate: undefined,
-      endDate: undefined,
-      reason: '',
+      leaveType: undefined, // Placeholder will be shown by Select
+      startDate: undefined, // Placeholder will be shown by Calendar
+      endDate: undefined,   // Placeholder will be shown by Calendar
+      reason: '', // Initialize as empty string
     },
   });
 
@@ -72,7 +71,12 @@ export default function LeaveApplicationPage() {
         description: formState.message,
         variant: 'default',
       });
-      form.reset();
+      form.reset({ // Reset with defined defaults
+        leaveType: undefined,
+        startDate: undefined,
+        endDate: undefined,
+        reason: '',
+      });
       if (user) fetchPastApplications(user.uid); // Refresh list
     } else if (formState.message && !formState.success && formState.errors === undefined) { // General error
       toast({
@@ -107,7 +111,7 @@ export default function LeaveApplicationPage() {
     if (user && !authLoading) {
       fetchPastApplications(user.uid);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, toast]); // Added toast to dependencies as it's used in fetchPastApplications
 
 
   if (authLoading) {
@@ -133,7 +137,7 @@ export default function LeaveApplicationPage() {
       </>
     );
   }
-  
+
   return (
     <>
       <MainHeader />
@@ -152,9 +156,9 @@ export default function LeaveApplicationPage() {
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <Label htmlFor="leaveType">Leave Type</Label>
-                   <Select 
+                   <Select
                     onValueChange={(value) => form.setValue('leaveType', value as LeaveType, { shouldValidate: true })}
-                    defaultValue={form.getValues('leaveType')}
+                    value={form.watch('leaveType')} // Controlled component
                     name="leaveType"
                     >
                     <SelectTrigger id="leaveType" className={cn(form.formState.errors.leaveType && "border-destructive")}>
@@ -178,7 +182,6 @@ export default function LeaveApplicationPage() {
                       <Button
                         variant="outline"
                         id="startDate"
-                        // name="startDate" // Not needed on button, hidden input handles it
                         className={cn(
                           "w-full justify-start text-left font-normal",
                           !form.watch('startDate') && "text-muted-foreground",
@@ -193,13 +196,13 @@ export default function LeaveApplicationPage() {
                       <Calendar
                         mode="single"
                         selected={form.watch('startDate')}
-                        onSelect={(date) => form.setValue('startDate', date!, { shouldValidate: true })}
+                        onSelect={(date) => form.setValue('startDate', date || undefined, { shouldValidate: true })} // Pass undefined if date is null
                         initialFocus
                       />
                     </PopoverContent>
                   </Popover>
                   {form.formState.errors.startDate && <p className="text-sm text-destructive mt-1">{form.formState.errors.startDate.message}</p>}
-                   <input type="hidden" name="startDate" value={form.watch('startDate')?.toISOString()} />
+                   <input type="hidden" name="startDate" value={form.watch('startDate') ? form.watch('startDate')!.toISOString() : ''} />
                 </div>
                 <div>
                   <Label htmlFor="endDate">End Date</Label>
@@ -208,7 +211,6 @@ export default function LeaveApplicationPage() {
                       <Button
                         variant="outline"
                         id="endDate"
-                        // name="endDate" // Not needed on button, hidden input handles it
                         className={cn(
                           "w-full justify-start text-left font-normal",
                           !form.watch('endDate') && "text-muted-foreground",
@@ -223,14 +225,14 @@ export default function LeaveApplicationPage() {
                       <Calendar
                         mode="single"
                         selected={form.watch('endDate')}
-                        onSelect={(date) => form.setValue('endDate', date!, { shouldValidate: true })}
+                        onSelect={(date) => form.setValue('endDate', date || undefined, { shouldValidate: true })} // Pass undefined if date is null
                         disabled={(date) => form.watch('startDate') ? date < form.watch('startDate')! : false }
                         initialFocus
                       />
                     </PopoverContent>
                   </Popover>
                   {form.formState.errors.endDate && <p className="text-sm text-destructive mt-1">{form.formState.errors.endDate.message}</p>}
-                   <input type="hidden" name="endDate" value={form.watch('endDate')?.toISOString()} />
+                   <input type="hidden" name="endDate" value={form.watch('endDate') ? form.watch('endDate')!.toISOString() : ''} />
                 </div>
               </div>
 
@@ -312,4 +314,3 @@ export default function LeaveApplicationPage() {
     </>
   );
 }
-
