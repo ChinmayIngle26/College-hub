@@ -90,27 +90,38 @@ For the admin panel to function correctly with Firestore security rules, the des
 
 ### 6. Deploy Firestore Security Rules
 
-The project includes a `firestore.rules` file that defines security for your database (e.g., users can only read/write their own data, and admins have broader access). You **MUST** deploy these rules to your Firebase project.
+The project includes a `firestore.rules` file that defines security for your database (e.g., users can only read/write their own data, admins have broader access, and system settings are publicly readable). You **MUST** deploy these rules to your Firebase project to ensure the application functions correctly and securely.
 
-**a. Log in to Firebase CLI:**
-```bash
-firebase login
-```
+**Follow these step-by-step instructions to deploy your Firestore rules:**
 
-**b. Select Your Firebase Project:**
-If you have multiple Firebase projects, or if this is the first time using Firebase CLI with this project directory, you might need to associate it:
-```bash
-firebase use --add
-```
-Then select the Firebase project you created in Step 3a. You can verify the current project with `firebase use`.
+**Step 1: Log in to Firebase CLI**
+   If you haven't already, open your terminal and log in to Firebase:
+   ```bash
+   firebase login
+   ```
+   This will open a browser window for authentication.
 
-**c. Deploy Rules:**
-From your project root directory (where `firebase.json` and `firestore.rules` are located), run:
-```bash
-firebase deploy --only firestore:rules
-```
-This command reads the `firestore.rules` file (specified in `firebase.json`) and applies them to your Firestore database.
-**Crucial:** Ensure this is done **after** you have manually set the admin role for the admin user in Firestore (Step 5b) if you want the admin to have immediate access based on these rules. If rules are deployed before the admin role is set, the admin user might not have the necessary permissions.
+**Step 2: Select Your Firebase Project**
+   Ensure your terminal is in the root directory of this project. If you have multiple Firebase projects, or if this is the first time using the Firebase CLI with this project directory, you need to associate it with your Firebase project:
+   ```bash
+   firebase use --add
+   ```
+   Follow the prompts to select the Firebase project you created in "3. Firebase Setup" (Step 3a).
+   You can verify the currently selected project by running:
+   ```bash
+   firebase use
+   ```
+
+**Step 3: Deploy the Rules**
+   Once logged in and the correct project is selected, deploy the Firestore security rules by running the following command from your project's root directory (where `firebase.json` and `firestore.rules` are located):
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+   This command reads the `firestore.rules` file (as specified in your `firebase.json`) and applies them to your Firestore database in the selected Firebase project.
+
+**Important Considerations:**
+*   **Timing:** Ensure this is done **after** you have manually set the admin role for the admin user in Firestore (Step 5b) if you want the admin to have immediate access based on these rules. If rules are deployed before the admin role is set, the admin user might not have the necessary permissions for admin actions.
+*   **Verification:** After deployment, you can verify that the rules have been updated by going to your Firebase Console -> Firestore Database -> Rules tab. The content there should match your local `firestore.rules` file.
 
 ### 7. Run the Development Server
 
@@ -134,14 +145,15 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   Verify the API key and other config values are correct from your Firebase project settings.
     *   Restart your development server after changes to `.env.local`.
 *   **"Missing or insufficient permissions" (Firestore Error)**:
-    *   This usually means your Firestore security rules are too restrictive, not deployed correctly, or the user performing the action does not have the required role (e.g., an admin action attempted by a non-admin user).
-    *   **1. Deploy Security Rules (MOST COMMON FIX):** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules`. Check the Firebase Console (Firestore Database > Rules tab) to see the currently active rules.
+    *   This usually means your Firestore security rules are too restrictive, not deployed correctly, or the user performing the action does not have the required role (e.g., an admin action attempted by a non-admin user, or server-side code attempting to access data without proper unauthenticated access rules if necessary, such as for `systemSettings`).
+    *   **1. Deploy Security Rules (MOST COMMON FIX):** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules` (see Step 6). Check the Firebase Console (Firestore Database > Rules tab) to see the currently active rules.
     *   **2. Set Admin Role:** For admin functionalities, **CRUCIALLY**, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b). The document ID for this user in the `users` collection must be their Firebase Authentication UID.
     *   **3. Check Rules Logic:** Review the rules in `firestore.rules` to confirm they grant the necessary permissions for the operations your app is trying to perform. For example:
         *   Can authenticated users create their own user document in the `users` collection upon signup (with specific constraints, e.g., only setting their own role to 'student')?
         *   Can authenticated users read their own user document?
         *   Can users with the 'admin' role `list` (get all documents) from the `users` collection?
-        *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection, including system settings?
+        *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection?
+        *   Can the `systemSettings/appConfiguration` document be read by unauthenticated users/server processes (e.g., for `generateMetadata` in `src/app/layout.tsx`)? Admins should have write access.
     *   **4. Verify User Authentication:** Ensure the user is actually signed in when the operation is attempted. Check the `user` object from `useAuth()` in your components.
     *   **5. Check Firestore Data and Document IDs:** Verify that the document paths your code is trying to access are correct (e.g., `users/{UID}`, `systemSettings/appConfiguration`).
     *   **6. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test your rules against specific operations (read, write, list) by specific users (provide their UID and mock data, including their `role` if it's 'admin'). This is very helpful for debugging.
@@ -157,4 +169,3 @@ The application should now be running, typically at `http://localhost:9002` (as 
 *   Add error handling and loading states for all data fetching operations.
 *   Implement admin functionalities and role-based access control.
 
-```
