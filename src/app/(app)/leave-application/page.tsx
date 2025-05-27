@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useFormState } from 'react-dom';
+import { useEffect, useState, useActionState } from 'react'; // Changed useFormState to useActionState
+// import { useFormState } from 'react-dom'; // Removed
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -12,7 +12,6 @@ import { CalendarIcon, CheckCircle, AlertTriangle, History, Loader2 } from 'luci
 import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Not used directly, Textarea is
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -21,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { cn } from '@/lib/utils';
-import type { LeaveApplication, LeaveApplicationFormData, LeaveType, LeaveStatus } from '@/types/leave';
+import type { LeaveApplication, LeaveApplicationFormData, LeaveType } from '@/types/leave';
 import { submitLeaveApplicationAction, type SubmitLeaveApplicationState } from './actions';
 import { getLeaveApplicationsByStudentId } from '@/services/leaveApplications';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,8 +46,7 @@ export default function LeaveApplicationPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
-  const [formState, formAction] = useFormState(
-    // Pass studentId to the action
+  const [formState, formAction, isPending] = useActionState( // Updated to useActionState and isPending
     (prevState: SubmitLeaveApplicationState | null, formData: FormData) => 
       user ? submitLeaveApplicationAction(user.uid, prevState, formData) : Promise.resolve({ success: false, message: "User not authenticated."}),
     initialFormState
@@ -99,7 +97,7 @@ export default function LeaveApplicationPage() {
       setPastApplications(apps);
     } catch (error) {
       console.error("Failed to fetch past applications", error);
-      toast({ title: "Error", description: "Could not load past leave applications.", variant: "destructive" });
+      toast({ title: "Error", description: `Could not load past leave applications. ${error instanceof Error ? error.message : ''}`, variant: "destructive" });
     } finally {
       setLoadingApplications(false);
     }
@@ -126,7 +124,6 @@ export default function LeaveApplicationPage() {
   }
 
   if (!user) {
-    // This should ideally be handled by middleware, but as a fallback
     return (
       <>
         <MainHeader />
@@ -137,8 +134,6 @@ export default function LeaveApplicationPage() {
     );
   }
   
-  const {formState: {isSubmitting}} = form;
-
   return (
     <>
       <MainHeader />
@@ -183,7 +178,7 @@ export default function LeaveApplicationPage() {
                       <Button
                         variant="outline"
                         id="startDate"
-                        name="startDate"
+                        // name="startDate" // Not needed on button, hidden input handles it
                         className={cn(
                           "w-full justify-start text-left font-normal",
                           !form.watch('startDate') && "text-muted-foreground",
@@ -213,7 +208,7 @@ export default function LeaveApplicationPage() {
                       <Button
                         variant="outline"
                         id="endDate"
-                        name="endDate"
+                        // name="endDate" // Not needed on button, hidden input handles it
                         className={cn(
                           "w-full justify-start text-left font-normal",
                           !form.watch('endDate') && "text-muted-foreground",
@@ -247,14 +242,13 @@ export default function LeaveApplicationPage() {
                   placeholder="Please provide a detailed reason for your leave request (min. 10 characters)."
                   {...form.register('reason')}
                   className={cn(form.formState.errors.reason && "border-destructive")}
-
                 />
                 {form.formState.errors.reason && <p className="text-sm text-destructive mt-1">{form.formState.errors.reason.message}</p>}
               </div>
             </CardContent>
             <CardFooter className="border-t px-6 py-4">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+              <Button type="submit" disabled={isPending}>
+                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
                 Submit Application
               </Button>
             </CardFooter>
@@ -289,10 +283,10 @@ export default function LeaveApplicationPage() {
                   <TableBody>
                     {pastApplications.map((app) => (
                       <TableRow key={app.id}>
-                        <TableCell>{format(app.appliedAt.toDate(), 'PPP')}</TableCell>
+                        <TableCell>{app.appliedAt ? format(app.appliedAt.toDate(), 'PPP') : 'N/A'}</TableCell>
                         <TableCell>{app.leaveType}</TableCell>
-                        <TableCell>{format(app.startDate.toDate(), 'PPP')}</TableCell>
-                        <TableCell>{format(app.endDate.toDate(), 'PPP')}</TableCell>
+                        <TableCell>{app.startDate ? format(app.startDate.toDate(), 'PPP'): 'N/A'}</TableCell>
+                        <TableCell>{app.endDate ? format(app.endDate.toDate(), 'PPP'): 'N/A'}</TableCell>
                         <TableCell className="max-w-xs truncate">{app.reason}</TableCell>
                         <TableCell className="text-right">
                           <span className={cn(

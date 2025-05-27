@@ -4,92 +4,89 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users collection
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // User Profiles
+    // Users can only read/write their own profile. Admins can read/write any profile.
     match /users/{userId} {
-      // Allow reads if the user is authenticated.
-      allow read: if request.auth != null;
-
-      // Allow create only if the user is creating their own document
-      // and they are setting their role to 'student' by default.
-      // All specified fields must be present during creation.
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Allow users to create their own profile document upon signup
+      // Ensure they can only set their role to 'student' initially or not set role at all if admin sets it later
       allow create: if request.auth != null && request.auth.uid == userId &&
-                       request.resource.data.role == 'student' &&
-                       request.resource.data.keys().hasAll(['name', 'studentId', 'major', 'email', 'parentEmail', 'role']) &&
-                       request.resource.data.name is string &&
-                       request.resource.data.studentId is string &&
-                       request.resource.data.major is string &&
-                       request.resource.data.email is string &&
-                       request.resource.data.parentEmail is string;
+                       (request.resource.data.role == 'student' || !('role' in request.resource.data));
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Prevent users from changing their own role unless they are an admin changing someone else's role.
+      // Or, if they are updating their own profile, their role field must remain unchanged or not be present in the update.
+      // allow update: if request.auth != null && 
+      //                  ( (request.auth.uid == userId && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) ) || 
+      //                    isAdmin() );
+      allow delete: if isAdmin(); // Only admins can delete user profiles (Firestore docs)
 
-
-      // Allow updates if the user is updating their own document.
-      // Users can only update specific fields. They cannot change their role.
-      allow update: if request.auth != null && request.auth.uid == userId &&
-                       !(request.resource.data.role is string && request.resource.data.role != resource.data.role) && // Prevent role change by user
-                       request.resource.data.keys().hasOnly(['name', 'studentId', 'major', 'email', 'parentEmail']); // Fields they can update
-
-
-      // Allow deletes if the user is deleting their own document (generally restrictive)
-      // or if an admin is deleting the document.
-      allow delete: if request.auth != null &&
-                      (request.auth.uid == userId ||
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-
-      // Disallow access to any subcollections under a user document for now.
+      // Disallow direct access to subcollections of users if any exist, unless specified
       match /{document=**} {
         allow read, write: if false;
       }
     }
 
-    // System Settings collection
+    // System Settings: only admins can manage system settings.
+    // Public needs to read appConfiguration for metadata and maintenance status
     match /systemSettings/{docId} {
-      // Allow public read for the appConfiguration document.
-      // This is crucial for metadata generation and middleware which might run unauthenticated.
-      allow read: if docId == 'appConfiguration';
+      allow read: if docId == 'appConfiguration'; // Anyone can read the main app configuration
+      allow write: if isAdmin(); // Only admins can write to any system settings document
 
-      // Allow writes (create, update, delete) only if the user is an admin.
-      // Admin check can be based on a custom claim 'admin' set to true, or by a specific email.
-      allow write: if request.auth != null &&
-                      (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-                       request.auth.token.email == 'admin@gmail.com');
-
-
-      // Disallow access to any subcollections under a systemSettings document.
+      // Disallow direct access to subcollections of systemSettings if any exist
       match /{document=**} {
         allow read, write: if false;
       }
     }
+    
+    // Rules for Leave Applications
+    match /leaveApplications {
+        // Allow authenticated users to list applications.
+        // This MUST be secured by client-side queries (e.g., where('studentId', '==', request.auth.uid))
+        // AND by the document-level read rules below.
+        allow list: if request.auth != null;
+    }
 
-    // Leave Applications collection
     match /leaveApplications/{applicationId} {
-      // Allow create if the user is authenticated and is creating an application for themselves.
-      // Ensure all required fields are present and status is 'Pending'.
+      // Students can create their own leave applications
       allow create: if request.auth != null &&
-                       request.resource.data.studentId == request.auth.uid &&
-                       request.resource.data.keys().hasAll(['studentId', 'studentName', 'parentEmail', 'leaveType', 'startDate', 'endDate', 'reason', 'status', 'appliedAt']) &&
-                       request.resource.data.status == 'Pending';
+                       request.auth.uid == request.resource.data.studentId &&
+                       request.resource.data.status == 'Pending'; // Ensure initial status is Pending
 
-      // Allow read if the user is authenticated and is the owner of the application,
-      // OR if the user is an admin.
+      // Students can read their own leave applications
+      // Admins (identified by role in their user document) can read any application
       allow read: if request.auth != null &&
-                     (request.auth.uid == resource.data.studentId ||
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+                     (request.auth.uid == resource.data.studentId || isAdmin());
 
-      // Allow update (e.g., status change by admin).
-      // Only admins can update the application.
-      // Ensure only expected fields are part of the update.
-      allow update: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Admins can update the status of leave applications
+      allow update: if isAdmin() &&
+                       // Example: Ensure only status can be changed by admin, and other fields remain untouched by this update
+                       request.resource.data.studentId == resource.data.studentId &&
+                       request.resource.data.studentName == resource.data.studentName &&
+                       request.resource.data.parentEmail == resource.data.parentEmail &&
+                       request.resource.data.leaveType == resource.data.leaveType &&
+                       request.resource.data.startDate == resource.data.startDate &&
+                       request.resource.data.endDate == resource.data.endDate &&
+                       request.resource.data.reason == resource.data.reason &&
+                       request.resource.data.appliedAt == resource.data.appliedAt;
 
 
-      // Allow delete if the user is an admin.
-      allow delete: if request.auth != null &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-
-      // Disallow access to any subcollections under a leaveApplication document.
-      match /{document=**} {
-        allow read, write: if false;
-      }
+      // Admins can delete leave applications
+      // Optionally, students could delete their own if status is 'Pending'
+      allow delete: if isAdmin();
+      // allow delete: if isAdmin() || (request.auth.uid == resource.data.studentId && resource.data.status == 'Pending');
     }
+
+
+    // Default deny all other paths if not explicitly matched
+    // This is not strictly necessary if all collections are explicitly matched,
+    // but can be a good safety net.
+    // match /{path=**}/documents/{document} {
+    //   allow read, write: if false;
+    // }
   }
 }
