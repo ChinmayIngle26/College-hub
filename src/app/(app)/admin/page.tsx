@@ -25,6 +25,7 @@ interface UserData {
   studentId?: string;
   major?: string;
   email?: string;
+  parentEmail?: string; // Added parentEmail
   role?: string;
   createdAt?: any; // Adjust if using a specific timestamp type
 }
@@ -37,7 +38,7 @@ export default function AdminPage() {
   const [checkingRole, setCheckingRole] = useState(true);
   const [usersData, setUsersData] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '', role: 'student' });
+  const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' }); // Added parentEmail
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -160,10 +161,19 @@ export default function AdminPage() {
     if (!db || !isAdmin) return;
 
     try {
-      if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email || !newUser.role) {
+      if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email || !newUser.parentEmail || !newUser.role) { // Added parentEmail check
         toast({
           title: "Validation Error",
           description: "Please fill in all fields to create a new user.",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Basic email validation (can be more robust)
+      if (!/\S+@\S+\.\S+/.test(newUser.email) || !/\S+@\S+\.\S+/.test(newUser.parentEmail)) {
+        toast({
+          title: "Validation Error",
+          description: "Please enter valid email addresses.",
           variant: "destructive",
         });
         return;
@@ -180,7 +190,7 @@ export default function AdminPage() {
         description: "User profile created successfully in Firestore.",
       });
       fetchUsers(); // Refresh users list
-      setNewUser({ name: '', studentId: '', major: '', email: '', role: 'student' });
+      setNewUser({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' }); // Reset parentEmail
     } catch (error) {
       console.error("Error creating user profile:", error);
       toast({
@@ -200,7 +210,7 @@ export default function AdminPage() {
     if (!db || !isAdmin || !editingUser || !editingUser.id) return;
 
     try {
-      if (!editingUser.name || !editingUser.studentId || !editingUser.major || !editingUser.email || !editingUser.role) {
+      if (!editingUser.name || !editingUser.studentId || !editingUser.major || !editingUser.email || !editingUser.parentEmail || !editingUser.role) { // Added parentEmail check
         toast({
           title: "Validation Error",
           description: "Please fill in all fields.",
@@ -208,6 +218,16 @@ export default function AdminPage() {
         });
         return;
       }
+      // Basic email validation
+      if (!/\S+@\S+\.\S+/.test(editingUser.email) || (editingUser.parentEmail && !/\S+@\S+\.\S+/.test(editingUser.parentEmail))) {
+        toast({
+          title: "Validation Error",
+          description: "Please enter valid email addresses.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const userDocRef = doc(db, 'users', editingUser.id);
       const { id, ...userDataToUpdate } = editingUser;
       // Admin can update users. Firestore rules should allow this.
@@ -320,6 +340,7 @@ export default function AdminPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Student ID</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Parent's Email</th> {/* New Column Header */}
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Major</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Role</th>
                         <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -331,6 +352,7 @@ export default function AdminPage() {
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">{u.name || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.studentId || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.email || 'N/A'}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.parentEmail || 'N/A'}</td> {/* New Column Data */}
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.major || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.role || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
@@ -393,6 +415,10 @@ export default function AdminPage() {
                       <Label htmlFor="newUserEmail">Email</Label>
                       <Input id="newUserEmail" name="email" type="email" value={newUser.email} onChange={handleInputChange} placeholder="user@example.com" />
                     </div>
+                    <div> {/* New Parent's Email Field */}
+                      <Label htmlFor="newUserParentEmail">Parent's Email</Label>
+                      <Input id="newUserParentEmail" name="parentEmail" type="email" value={newUser.parentEmail} onChange={handleInputChange} placeholder="parent@example.com" />
+                    </div>
                     <div>
                       <Label htmlFor="newUserMajor">Major</Label>
                       <Input id="newUserMajor" name="major" value={newUser.major} onChange={handleInputChange} placeholder="Computer Science" />
@@ -444,6 +470,10 @@ export default function AdminPage() {
               <div>
                 <Label htmlFor="editUserEmail">Email</Label>
                 <Input id="editUserEmail" name="email" type="email" value={editingUser.email || ''} onChange={handleEditInputChange} />
+              </div>
+              <div> {/* New Parent's Email Field for Edit */}
+                <Label htmlFor="editUserParentEmail">Parent's Email</Label>
+                <Input id="editUserParentEmail" name="parentEmail" type="email" value={editingUser.parentEmail || ''} onChange={handleEditInputChange} />
               </div>
               <div>
                 <Label htmlFor="editUserMajor">Major</Label>
