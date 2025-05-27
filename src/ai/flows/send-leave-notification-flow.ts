@@ -3,14 +3,15 @@
 /**
  * @fileOverview A Genkit flow to send leave application notifications to parents.
  *
- * - sendLeaveNotification - A function that handles composing and (conceptually) sending the email.
+ * - sendLeaveNotification - A function that handles composing and sending the email.
  * - SendLeaveNotificationInput - The input type for the sendLeaveNotification function.
  * - SendLeaveNotificationOutput - The return type for the sendLeaveNotification function.
  */
 
-import { ai } from '@/ai/ai-instance'; // Corrected import path
+import { ai } from '@/ai/ai-instance';
 import { z } from 'genkit';
-import { format } from 'date-fns';
+// import { format } from 'date-fns'; // No longer directly used here for formatting, but might be if passing Date objects
+import { sendEmail } from '@/services/email-service'; // Import the email service
 
 const SendLeaveNotificationInputSchema = z.object({
   parentEmail: z.string().email().describe("The parent's email address."),
@@ -29,7 +30,6 @@ const SendLeaveNotificationOutputSchema = z.object({
 });
 export type SendLeaveNotificationOutput = z.infer<typeof SendLeaveNotificationOutputSchema>;
 
-// This is the exported wrapper function that Next.js Server Actions or other server-side code will call.
 export async function sendLeaveNotification(input: SendLeaveNotificationInput): Promise<SendLeaveNotificationOutput> {
   return sendLeaveNotificationFlow(input);
 }
@@ -73,30 +73,31 @@ const sendLeaveNotificationFlow = ai.defineFlow(
 
       const { emailBody, emailSubject } = output;
 
-      // --- !!! IMPORTANT: Actual Email Sending Logic !!! ---
-      // This is where you would integrate with an actual email sending service
-      // (e.g., SendGrid, Resend, AWS SES, Nodemailer with an SMTP server).
-      // Genkit itself does not send emails directly without a plugin or custom tool.
-      // For this prototype, we will simulate success and log the action.
+      // Attempt to send the email using Nodemailer service
+      try {
+        await sendEmail({
+          to: input.parentEmail,
+          subject: emailSubject,
+          html: emailBody,
+          text: emailBody.replace(/<[^>]*>?/gm, ''), // Simple text version
+        });
+        
+        return {
+          success: true,
+          message: 'Email notification sent successfully to parent.',
+          emailContent: `Subject: ${emailSubject}\n\n${emailBody}`,
+        };
 
-      console.log('--- SIMULATING EMAIL SEND ---');
-      console.log(`To: ${input.parentEmail}`);
-      console.log(`Subject: ${emailSubject}`);
-      console.log(`Body:\n${emailBody}`);
-      console.log('--- EMAIL SEND SIMULATION COMPLETE ---');
+      } catch (emailError) {
+        console.error('Failed to send email notification:', emailError);
+        // If email sending fails, the application is still submitted, but we report the email failure.
+        return {
+          success: false, // Indicate that notification step failed
+          message: `Leave application submitted, but failed to send email notification to parent. Reason: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+          emailContent: `Subject: ${emailSubject}\n\n${emailBody}`, // Still provide content for debugging
+        };
+      }
 
-      // In a real application, you would replace the console logs above with:
-      // await emailService.send({
-      //   to: input.parentEmail,
-      //   subject: emailSubject,
-      //   html: emailBody, // or text: emailBody
-      // });
-
-      return {
-        success: true,
-        message: 'Email notification (simulated) sent successfully to parent.',
-        emailContent: `Subject: ${emailSubject}\n\n${emailBody}`,
-      };
     } catch (error) {
       console.error('Error in sendLeaveNotificationFlow:', error);
       return {

@@ -1,7 +1,7 @@
 
 # Advanced Student ERP Dashboard (Next.js & Firebase)
 
-This is a Next.js application serving as a student ERP dashboard, integrated with Firebase for authentication and database services.
+This is a Next.js application serving as a student ERP dashboard, integrated with Firebase for authentication and database services. It also uses Nodemailer for sending email notifications.
 
 ## Getting Started
 
@@ -51,8 +51,8 @@ This project uses Firebase for Authentication and Firestore database.
 
 ### 4. Environment Variables
 
-Create a `.env.local` file in the root of your project. Copy the configuration values from your Firebase web app setup (Step 3b) into this file.
-**The variables MUST be prefixed with `NEXT_PUBLIC_`.**
+Create a `.env.local` file in the root of your project. Copy the configuration values from your Firebase web app setup (Step 3b) and your email provider into this file.
+**The Firebase variables MUST be prefixed with `NEXT_PUBLIC_`.**
 
 ```env
 # .env.local
@@ -68,6 +68,23 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:xxxxxxxxxxxxxxxxxxxxxx
 
 # Genkit (if using, ensure your Google AI API key is set here or in your environment)
 # GOOGLE_GENAI_API_KEY=AIzaSyYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
+
+# Nodemailer SMTP Configuration (for sending emails)
+# Replace with your actual SMTP server details and credentials
+SENDER_EMAIL=noreply@example.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587 # Or 465 for SSL
+SMTP_USER=your_smtp_username
+SMTP_PASS=your_smtp_password
+
+# Firebase Admin SDK (Optional, for server-side operations if needed, e.g., token verification)
+# If you are using Firebase Admin SDK for server-side operations (like in src/lib/firebase/admin.ts),
+# you might need to point to your service account key JSON file.
+# Ensure this file is NOT committed to your repository and is kept secure.
+# FIREBASE_ADMIN_SDK_PATH=./path-to-your-service-account-key.json
+# Alternatively, for environments like Google Cloud Functions or Firebase Hosting,
+# the SDK can often initialize with default credentials if GOOGLE_APPLICATION_CREDENTIALS is set
+# or if running in a Google managed environment.
 ```
 
 **Important:** Restart your development server (`npm run dev` or `yarn dev`) after creating or modifying the `.env.local` file.
@@ -78,7 +95,7 @@ For the admin panel to function correctly with Firestore security rules, the des
 
 **a. Sign Up the Admin User:**
    Run the application (`npm run dev`) and sign up using the email address you've designated as the admin (e.g., `admin@gmail.com` as defined in `src/app/(app)/admin/page.tsx`). **Use a temporary password if needed, and remember it.**
-   During sign-up, the system will automatically assign the role `student` (as per `src/app/signup/page.tsx`). This will be overridden in the next step.
+   During sign-up, the system will automatically assign the role `student` (as per `src/app/signup/page.tsx`). This will be overridden in the next step. Remember to also provide a "Parent's Email" during signup as it's now a required field.
 
 **b. Manually Set Admin Role in Firestore:**
    - Go to your Firebase Console -> Firestore Database.
@@ -123,7 +140,39 @@ The project includes a `firestore.rules` file that defines security for your dat
 *   **Timing:** Ensure this is done **after** you have manually set the admin role for the admin user in Firestore (Step 5b) if you want the admin to have immediate access based on these rules. If rules are deployed before the admin role is set, the admin user might not have the necessary permissions for admin actions.
 *   **Verification:** After deployment, you can verify that the rules have been updated by going to your Firebase Console -> Firestore Database -> Rules tab. The content there should match your local `firestore.rules` file.
 
-### 7. Run the Development Server
+### 7. Email Configuration (Nodemailer)
+
+For the leave application notifications to be sent to parents, you need to configure an SMTP server. The application uses Nodemailer for this.
+
+**a. Obtain SMTP Credentials:**
+   You will need the following from your email provider (e.g., Gmail, SendGrid, Mailgun, AWS SES, or your own SMTP server):
+   - Sender Email Address (the "From" address)
+   - SMTP Host (e.g., `smtp.gmail.com`)
+   - SMTP Port (e.g., `587` for TLS, `465` for SSL)
+   - SMTP Username
+   - SMTP Password (or App Password if using Gmail with 2FA)
+
+**b. Set Environment Variables:**
+   Add these credentials to your `.env.local` file as shown in Step 4. For example:
+   ```env
+   SENDER_EMAIL=your-sender-email@example.com
+   SMTP_HOST=smtp.yourprovider.com
+   SMTP_PORT=587
+   SMTP_USER=your_smtp_username
+   SMTP_PASS=your_smtp_password_or_app_password
+   ```
+   **Never commit your SMTP password directly into your code or repository.**
+
+**c. Gmail Specifics (if using Gmail):**
+   - If you're using a Gmail account, you might need to:
+     - Enable "Less secure app access" in your Google account settings (not recommended for production).
+     - Or, preferably, generate an "App Password" if you have 2-Step Verification enabled for your Google account. Use this App Password as your `SMTP_PASS`.
+   - Gmail has sending limits for free accounts. For production, consider a dedicated transactional email service.
+
+**d. Restart Development Server:**
+   After setting these environment variables, restart your development server (`npm run dev`). The server console should indicate if Nodemailer was able to initialize correctly or if there were configuration issues.
+
+### 8. Run the Development Server
 
 ```bash
 npm run dev
@@ -131,12 +180,12 @@ npm run dev
 yarn dev
 ```
 
-The application should now be running, typically at `http://localhost:9002` (as per your `package.json` dev script). You should be able to sign up, sign in, and access protected pages. Admins should have access to the admin panel and its functionalities.
+The application should now be running, typically at `http://localhost:9002` (as per your `package.json` dev script). You should be able to sign up, sign in, and access protected pages. Admins should have access to the admin panel and its functionalities. Students applying for leave should trigger an email notification to their parent's email (if configured correctly).
 
 ## Firebase Services Used
 
 *   **Firebase Authentication:** For user sign-up and sign-in.
-*   **Firestore:** As a NoSQL database to store user profiles and potentially other application data.
+*   **Firestore:** As a NoSQL database to store user profiles, system settings, and leave applications.
 
 ## Troubleshooting
 
@@ -145,27 +194,30 @@ The application should now be running, typically at `http://localhost:9002` (as 
     *   Verify the API key and other config values are correct from your Firebase project settings.
     *   Restart your development server after changes to `.env.local`.
 *   **"Missing or insufficient permissions" (Firestore Error)**:
-    *   This usually means your Firestore security rules are too restrictive, not deployed correctly, or the user performing the action does not have the required role (e.g., an admin action attempted by a non-admin user, or server-side code attempting to access data without proper unauthenticated access rules if necessary, such as for `systemSettings`).
+    *   This usually means your Firestore security rules are too restrictive, not deployed correctly, or the user performing the action does not have the required role.
     *   **1. Deploy Security Rules (MOST COMMON FIX):** Ensure you have deployed the `firestore.rules` file using `firebase deploy --only firestore:rules` (see Step 6). Check the Firebase Console (Firestore Database > Rules tab) to see the currently active rules.
-    *   **2. Set Admin Role:** For admin functionalities, **CRUCIALLY**, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b). The document ID for this user in the `users` collection must be their Firebase Authentication UID.
-    *   **3. Check Rules Logic:** Review the rules in `firestore.rules` to confirm they grant the necessary permissions for the operations your app is trying to perform. For example:
-        *   Can authenticated users create their own user document in the `users` collection upon signup (with specific constraints, e.g., only setting their own role to 'student')?
-        *   Can authenticated users read their own user document?
-        *   Can users with the 'admin' role `list` (get all documents) from the `users` collection?
-        *   Can users with the 'admin' role `create`, `update`, or `delete` documents in the `users` collection?
-        *   Can the `systemSettings/appConfiguration` document be read by unauthenticated users/server processes (e.g., for `generateMetadata` in `src/app/layout.tsx`)? Admins should have write access.
-    *   **4. Verify User Authentication:** Ensure the user is actually signed in when the operation is attempted. Check the `user` object from `useAuth()` in your components.
-    *   **5. Check Firestore Data and Document IDs:** Verify that the document paths your code is trying to access are correct (e.g., `users/{UID}`, `systemSettings/appConfiguration`).
-    *   **6. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test your rules against specific operations (read, write, list) by specific users (provide their UID and mock data, including their `role` if it's 'admin'). This is very helpful for debugging.
+    *   **2. Set Admin Role:** For admin functionalities, ensure the admin user's document in the `users` collection in Firestore has the `role` field set to `admin` (see Step 5b).
+    *   **3. Check Rules Logic:** Review `firestore.rules`.
+    *   **4. Verify User Authentication & Student ID**: Ensure the user is signed in. For operations like fetching leave applications, confirm the `studentId` being queried matches `request.auth.uid` as per your rules.
+    *   **5. Firebase Console Rules Simulator:** Use the Rules Playground in the Firebase Console (Firestore Database > Rules tab) to test operations.
+*   **Email Not Sending (Leave Notifications)**:
+    *   **Check Nodemailer Configuration:** Ensure `SENDER_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS` are correctly set in `.env.local`.
+    *   **Restart Server:** Restart the dev server after changing `.env.local`.
+    *   **Check Server Logs:** Look for Nodemailer errors or success messages in your Next.js server console output.
+    *   **SMTP Provider Issues:** Verify your SMTP credentials are correct and your provider isn't blocking the connection (e.g., firewall, rate limits, security settings like Gmail's "less secure app access").
+    *   **Spam Folder:** Check the recipient's spam/junk folder.
 *   **Blank screen after login/redirect issues**:
     *   Check the browser console for errors.
-    *   Verify the `middleware.ts` logic and ensure cookies are being set/cleared correctly if you're relying on them for auth checks in middleware.
-    *   Ensure `AuthProvider` wraps your application in `src/app/layout.tsx`.
+    *   Verify the `middleware.ts` logic.
+    *   Ensure `AuthProvider` wraps your application.
 
 ## Further Development
 
 *   Implement data fetching for other services (attendance, grades, appointments, etc.) from Firestore or other backend services.
 *   Refine Firestore security rules as you add more collections and features.
 *   Add error handling and loading states for all data fetching operations.
-*   Implement admin functionalities and role-based access control.
+*   Implement admin functionalities for managing leave applications (approve/reject).
+*   Consider a more robust email solution for production (e.g., SendGrid, Resend) if Nodemailer with a personal SMTP has limitations.
 
+
+```
