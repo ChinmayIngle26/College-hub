@@ -23,9 +23,9 @@ export interface SystemSettings {
 const defaultSettings: SystemSettings = {
   maintenanceMode: false,
   allowNewUserRegistration: true,
-  applicationName: 'College Hub', // Updated default name
-  announcementTitle: 'Welcome to College Hub!', // Updated default title
-  announcementContent: 'Stay tuned for important updates and announcements. You can customize this message in the admin settings.', // Updated default content
+  applicationName: 'College Hub',
+  announcementTitle: 'Welcome to College Hub!',
+  announcementContent: 'Stay tuned for important updates and announcements. You can customize this message in the admin settings.',
   defaultItemsPerPage: 10,
   lastUpdated: null, 
 };
@@ -39,9 +39,11 @@ const defaultSettings: SystemSettings = {
  * @returns A promise that resolves to a SystemSettings object.
  */
 export async function getSystemSettings(): Promise<SystemSettings> {
+  const callContext = (typeof window === 'undefined') ? 'server/middleware' : 'client';
+
   if (!db) {
-    console.warn("Firestore DB instance is not available. Returning default system settings. This might occur during build or if Firebase is not initialized.");
-    return { ...defaultSettings }; // Return a copy
+    console.warn(`[${callContext}] Firestore DB instance is not available. Returning default system settings. This might occur during build or if Firebase is not initialized, or due to Firestore rules.`);
+    return { ...defaultSettings, lastUpdated: null }; // Return a copy
   }
 
   const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
@@ -51,30 +53,31 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      // console.log(`[${callContext}] Fetched system settings from Firestore:`, data);
       // Merge fetched data with defaults to ensure all keys are present
       return {
         ...defaultSettings, // Start with defaults
         ...data, // Override with fetched data
-        lastUpdated: data.lastUpdated instanceof Timestamp ? data.lastUpdated : null, // Ensure lastUpdated is a Timestamp or null
+        lastUpdated: data.lastUpdated instanceof Timestamp ? data.lastUpdated : (data.lastUpdated?.toDate ? new Timestamp(data.lastUpdated.seconds, data.lastUpdated.nanoseconds) : null), // Ensure lastUpdated is a Timestamp or null
       } as SystemSettings;
     } else {
-      console.log("No system settings document found in Firestore. Attempting to initialize with defaults.");
+      console.warn(`[${callContext}] No system settings document found in Firestore (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}). Attempting to initialize with defaults.`);
       try {
         await setDoc(settingsDocRef, {
           ...defaultSettings,
           lastUpdated: serverTimestamp(), // Use server timestamp for creation
         });
-        console.log("System settings initialized successfully in Firestore with default values.");
+        console.log(`[${callContext}] System settings initialized successfully in Firestore with default values.`);
         return { ...defaultSettings, lastUpdated: null }; // Return defaults (lastUpdated will be set by server)
       } catch (initError) {
-        console.error("Failed to initialize system settings in Firestore. Returning default settings. Error:", initError);
-        return { ...defaultSettings }; // Return default settings if initialization fails
+        console.error(`[${callContext}] Failed to initialize system settings in Firestore. Returning default settings. Error:`, initError);
+        return { ...defaultSettings, lastUpdated: null }; // Return default settings if initialization fails
       }
     }
   } catch (error) {
-    console.error("Error fetching system settings from Firestore. Returning default settings. This might be due to Firestore rules or connectivity. Error:", error);
+    console.error(`[${callContext}] Error fetching/processing system settings from Firestore (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}). Returning default settings. This might be due to Firestore rules or connectivity. Error:`, error);
     // Return default settings on any other error to allow app to continue (e.g., for metadata)
-    return { ...defaultSettings };
+    return { ...defaultSettings, lastUpdated: null };
   }
 }
 
@@ -86,8 +89,9 @@ export async function getSystemSettings(): Promise<SystemSettings> {
  * @throws Throws an error if Firestore is not initialized or if there's a Firebase error during update.
  */
 export async function updateSystemSettings(settingsToUpdate: Partial<SystemSettings>): Promise<void> {
+  const callContext = (typeof window === 'undefined') ? 'server/middleware' : 'client';
   if (!db) {
-    console.error("Firestore DB instance is not available for updating system settings.");
+    console.error(`[${callContext}] Firestore DB instance is not available for updating system settings.`);
     throw new Error("Database connection error while updating system settings.");
   }
 
@@ -99,12 +103,10 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
       lastUpdated: serverTimestamp(),
     };
     // Use setDoc with merge: true to handle creation if document doesn't exist, or update if it does.
-    // This is generally safer than updateDoc which fails if the doc doesn't exist.
     await setDoc(settingsDocRef, dataToUpdate, { merge: true });
-    console.log("System settings updated/created successfully.");
+    // console.log(`[${callContext}] System settings updated/created successfully with:`, dataToUpdate);
   } catch (error) {
-    console.error("Error updating/creating system settings:", error);
-    // Provide a more specific error message based on common Firestore error codes if possible
+    console.error(`[${callContext}] Error updating/creating system settings (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}):`, error);
     if (error instanceof Error && 'code' in error) {
         const firebaseError = error as { code: string; message: string };
         if (firebaseError.code === 'permission-denied') {
