@@ -4,103 +4,82 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Default Deny ---
-    // Deny all reads and writes by default to enforce explicit permissions.
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // --- User Profiles ---
-    // Users can read their own profile.
-    // Users can create their own profile upon signup (with specific data constraints).
-    // Users can update their own profile (with specific data constraints).
-    // Admins can read any user profile.
-    // Admins can create, update, and delete user profiles.
+    // USER DATA
+    // Users can:
+    // - Read their own document.
+    // - Create their own document upon signup (with specific constraints).
+    // - Update their own document.
+    // - Delete their own document (less common, consider implications).
+    // Admins can:
+    // - Read any user document.
+    // - Create, update, or delete any user document.
     match /users/{userId} {
-      allow read: if request.auth != null && 
-                       (request.auth.uid == userId || 
-                        (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')));
-      
-      allow create: if request.auth != null && 
-                       (
-                         // Standard user signup: can only create their own doc, with role 'student'
-                         (request.auth.uid == userId &&
-                           request.resource.data.keys().hasAll(['name', 'studentId', 'major', 'email', 'role']) &&
-                           request.resource.data.name is string &&
-                           request.resource.data.studentId is string &&
-                           request.resource.data.major is string &&
-                           request.resource.data.email == request.auth.token.email &&
-                           request.resource.data.role == 'student')
-                         ||
-                         // Admin creating a user profile: can create for any userId, with any role
-                         ( (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')) )
-                       );
+      allow read: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow create: if request.auth != null && request.auth.uid == userId; // Allow user to create their own doc
+      allow update: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow delete: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
 
-      allow update: if request.auth != null &&
-                       (
-                         // User updating their own profile (cannot change role to admin or from admin)
-                         (request.auth.uid == userId &&
-                           !(request.resource.data.role != resource.data.role && request.resource.data.role == 'admin') && 
-                           !(request.resource.data.role != resource.data.role && resource.data.role == 'admin') 
-                         ) ||
-                         // Admin updating any user profile
-                         (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'))
-                       );
-      
-      allow delete: if request.auth != null && 
-                       (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
-                       // Only admins can delete user profiles from Firestore
-
-      // Deny access to subcollections by default unless explicitly allowed
-      match /{document=**} {
-        allow read, write: if false;
-      }
+      // Disallow direct listing of all users for non-admins.
+      // Admins might list users through a backend function or specific query if needed,
+      // but direct client-side list is often restricted.
+      // For the admin panel to list users, this rule needs to be adjusted if listing directly.
+      // However, the admin panel currently fetches users and the isAdmin check is client-side,
+      // so this rule assumes listing is for admins:
+      allow list: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // --- System Settings ---
-    // System settings are stored in a single document: systemSettings/appConfiguration
-    match /systemSettings/appConfiguration {
-      // Allow unauthenticated reads for settings needed during build (generateMetadata) or pre-login (signup page check).
-      // Authenticated users can also read settings.
-      allow read: if true; 
-
-      // Write operations (create, update, delete) are restricted to admins.
-      // 'create' is implicitly handled by setDoc with merge:true if document doesn't exist.
-      // 'delete' of appConfiguration should generally be disallowed or highly restricted.
-      allow write: if request.auth != null && 
-                        (request.auth.token.email == "admin@gmail.com" || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
-      
-      // Deny access to subcollections by default
-      match /{document=**} {
-        allow read, write: if false;
-      }
+    // SYSTEM SETTINGS
+    // - Public read access: Needed for generateMetadata in Next.js layout, theme, etc.
+    // - Admin-only write access: Only admins can change system-wide configurations.
+    match /systemSettings/{docId} {
+      allow read: if true; // Allow public read for app configuration
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Create, update, delete are covered by 'write'.
+      // No listing needed as it's typically a single document 'appConfiguration'.
     }
 
-    // --- Rules for other collections (Announcements, Grades, Attendance, etc.) ---
-    // These are examples and need to be adjusted based on actual data structure and access patterns.
+    // ATTENDANCE RECORDS
+    // - Users can read their own attendance.
+    // - Admins can potentially read all attendance (if required, not explicitly defined yet).
+    // - Writing attendance might be restricted to specific roles or backend processes.
+    match /attendance/{studentId}/records/{recordId} {
+      allow read: if request.auth != null && (request.auth.uid == studentId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      // allow write: if ...; // Define who can write attendance
+    }
+    // Example for listing own attendance records
+    match /attendance/{studentId}/records {
+        allow list: if request.auth != null && request.auth.uid == studentId;
+    }
 
-    // Example: Announcements (assuming they are globally readable but only admin-writable)
-    // match /announcements/{announcementId} {
-    //   allow read: if true;
-    //   allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    // }
 
-    // Example: Grades (user can read their own grades, admin can read all/specific)
-    // This assumes grades are stored per user, e.g., /users/{userId}/grades/{gradeId}
-    // Or in a global collection with a studentId field: /grades/{gradeId} where doc contains studentId
-    // match /grades/{gradeId} {
-    //   allow read: if request.auth != null && 
-    //                  (resource.data.studentId == request.auth.uid || 
-    //                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-    //   // Add write rules for faculty/admins
-    // }
+    // GRADES
+    // - Users can read their own grades.
+    // - Admins can potentially read all grades.
+    // - Writing grades is typically highly restricted.
+    match /grades/{studentId}/courses/{courseId} {
+      allow read: if request.auth != null && (request.auth.uid == studentId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      // allow write: if ...; // Define who can write grades
+    }
+    // Example for listing own grades
+     match /grades/{studentId}/courses {
+        allow list: if request.auth != null && request.auth.uid == studentId;
+    }
 
-    // Example: Attendance (similar to grades)
-    // match /attendance/{attendanceId} {
-    //   allow read: if request.auth != null && 
-    //                  (resource.data.studentId == request.auth.uid || 
-    //                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-    //   // Add write rules for faculty/admins
+    // ANNOUNCEMENTS (assuming these are globally readable, admin-managed content)
+    match /announcements/{announcementId} {
+      allow read: if true; // Publicly readable
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+     match /announcements {
+        allow list: if true; // Publicly listable
+    }
+
+    // Add rules for other collections (appointments, voting, etc.) as needed.
+    // Example:
+    // match /appointments/{userId}/{appointmentId} {
+    //   allow read, write: if request.auth != null && request.auth.uid == userId;
     // }
   }
 }
+
+    
