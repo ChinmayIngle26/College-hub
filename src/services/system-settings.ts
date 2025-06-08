@@ -28,57 +28,76 @@ const defaultSettings: SystemSettings = {
 
 /**
  * Asynchronously retrieves the current system settings.
- * Uses Firebase Admin SDK when on the server, and Client SDK when on the client.
+ * Uses Firebase Admin SDK when on the server (Node.js runtime), and Client SDK when on the client.
+ * Skips Admin SDK usage if on the server but in Edge Runtime.
  * Dynamically imports SDKs to avoid premature initialization in wrong environments.
  *
  * @returns A promise that resolves to a SystemSettings object.
  */
 export async function getSystemSettings(): Promise<SystemSettings> {
   const onServer = typeof window === 'undefined';
-  const callContext = onServer ? 'server/middleware/generateMetadata' : 'client';
+  // More direct check for Vercel Edge Runtime or similar environments
+  const isEdgeEnvironment = onServer && typeof globalThis.EdgeRuntime === 'string';
+  const callContext = isEdgeEnvironment ? 'server-edge' : (onServer ? 'server-node' : 'client');
 
-  if (onServer) {
-    // Server-side: Use Firebase Admin SDK
+  // console.log(`[SystemSettings:${callContext}] getSystemSettings called. process.env.NEXT_RUNTIME: ${process.env.NEXT_RUNTIME}, globalThis.EdgeRuntime: ${typeof globalThis.EdgeRuntime}`);
+
+  if (isEdgeEnvironment) {
+    console.warn(`[SystemSettings:server-edge] Running in an Edge-like Runtime (globalThis.EdgeRuntime detected). Firebase Admin SDK will not be used. Returning default system settings.`);
+    return { ...defaultSettings, lastUpdated: new Date() };
+  }
+
+  if (onServer && !isEdgeEnvironment) { // Explicitly Node.js server environment
+    // Server-side (Node.js): Use Firebase Admin SDK
+    // console.log(`[SystemSettings:server-node] Attempting to use Firebase Admin SDK.`);
     try {
-      const { adminDb, adminApp } = await import('@/lib/firebase/admin');
+      // Dynamically import Admin SDK parts only when needed in Node.js server environment
+      const { adminDb, adminApp, adminInitializationError } = await import('@/lib/firebase/admin');
       const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import('firebase-admin/firestore');
 
+      if (adminInitializationError) {
+        console.error(`[SystemSettings:server-node] Firebase Admin SDK initialization failed previously. Error: ${adminInitializationError.message}. Returning default system settings.`);
+        return { ...defaultSettings };
+      }
       if (!adminApp) {
-        console.warn(`[${callContext}] Firebase Admin App is not initialized. Returning default system settings.`);
+        console.warn(`[SystemSettings:server-node] Firebase Admin App is not available after import (should have been caught by adminInitializationError). Returning default system settings.`);
         return { ...defaultSettings };
       }
       if (!adminDb) {
-        console.warn(`[${callContext}] Firebase Admin DB instance is not available. Returning default system settings.`);
-        return { ...defaultSettings };
+        console.warn(`[SystemSettings:server-node] Firebase Admin DB is not available. Returning default system settings.`);
+         return { ...defaultSettings };
       }
+
 
       const settingsAdminDocRef = adminDb.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID);
       const docSnap = await settingsAdminDocRef.get();
 
       if (docSnap.exists) {
-        const data = docSnap.data()!; // data() will not be undefined if exists() is true
+        const data = docSnap.data()!;
+        // console.log(`[SystemSettings:server-node] Fetched settings from Firestore (Admin).`);
         return {
           ...defaultSettings,
           ...data,
-          lastUpdated: data.lastUpdated instanceof AdminTimestamp ? data.lastUpdated.toDate() : null,
+          lastUpdated: data.lastUpdated instanceof AdminTimestamp ? data.lastUpdated.toDate() : (data.lastUpdated && typeof data.lastUpdated.toDate === 'function' ? data.lastUpdated.toDate() : null),
         };
       } else {
-        console.warn(`[${callContext}] No system settings document found (Admin). Initializing with default values.`);
+        console.warn(`[SystemSettings:server-node] No system settings document found (Admin). Initializing with default values.`);
         await settingsAdminDocRef.set({ ...defaultSettings, lastUpdated: AdminFieldValue.serverTimestamp() });
-        return { ...defaultSettings, lastUpdated: null }; // Return defaults (lastUpdated will be set by server)
+        return { ...defaultSettings, lastUpdated: new Date() }; // Represent current time for this initial set
       }
-    } catch (error) {
-      console.error(`[${callContext}] Error fetching/initializing system settings (Admin). Error:`, error);
-      return { ...defaultSettings }; // Fallback to defaults on error
+    } catch (error: any) {
+      console.error(`[SystemSettings:server-node] Error fetching/initializing system settings (Admin). Error: ${error.message}. Stack: ${error.stack}. Returning default system settings.`);
+      return { ...defaultSettings };
     }
-  } else {
-    // Client-side: Use Firebase Client SDK (dynamically imported)
+  } else if (!onServer) {
+    // Client-side: Use Firebase Client SDK
+    // console.log(`[SystemSettings:client] Attempting to use Firebase Client SDK.`);
     try {
       const { db: clientDb } = await import('@/lib/firebase/client');
       const { doc: clientDocFn, getDoc: getClientDocFn, setDoc: setClientDocFn, serverTimestamp: clientServerTimestampFn, Timestamp: ClientTimestamp } = await import('firebase/firestore');
 
       if (!clientDb) {
-        console.warn(`[${callContext}] Firestore Client DB instance is not available. Returning default system settings.`);
+        console.warn(`[SystemSettings:client] Firestore Client DB instance is not available. Returning default system settings.`);
         return { ...defaultSettings };
       }
       const settingsClientDocRef = clientDocFn(clientDb, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
@@ -86,21 +105,27 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
       if (docSnap.exists()) {
         const data = docSnap.data();
+        // console.log(`[SystemSettings:client] Fetched settings from Firestore (Client).`);
         return {
           ...defaultSettings,
           ...data,
-          lastUpdated: data.lastUpdated instanceof ClientTimestamp ? data.lastUpdated.toDate() : null,
+          lastUpdated: data.lastUpdated instanceof ClientTimestamp ? data.lastUpdated.toDate() : (data.lastUpdated && typeof data.lastUpdated.toDate === 'function' ? data.lastUpdated.toDate() : null),
         };
       } else {
-        console.warn(`[${callContext}] No system settings document found (Client). Initializing with default values.`);
+        console.warn(`[SystemSettings:client] No system settings document found (Client). Initializing with default values.`);
+        // Make sure clientServerTimestampFn is called to get the sentinel
         await setClientDocFn(settingsClientDocRef, { ...defaultSettings, lastUpdated: clientServerTimestampFn() });
-        return { ...defaultSettings, lastUpdated: null }; // serverTimestamp will be applied
+        return { ...defaultSettings, lastUpdated: new Date() }; // Represent current time, actual value will be server timestamp
       }
-    } catch (error) {
-      console.error(`[${callContext}] Error fetching/initializing system settings (Client). Error:`, error);
-      return { ...defaultSettings }; // Fallback to defaults on error
+    } catch (error: any) {
+      console.error(`[SystemSettings:client] Error fetching/initializing system settings (Client). Error: ${error.message}. Stack: ${error.stack}. Returning default system settings.`);
+      return { ...defaultSettings };
     }
   }
+  
+  // Fallback for any unexpected execution path
+  console.warn(`[SystemSettings] Unhandled case for getSystemSettings (onServer: ${onServer}, isEdgeEnvironment: ${isEdgeEnvironment}). Returning default system settings.`);
+  return { ...defaultSettings };
 }
 
 /**
@@ -129,7 +154,7 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
   try {
     const dataToUpdate = {
       ...settingsToUpdate,
-      lastUpdated: clientServerTimestampFn(),
+      lastUpdated: clientServerTimestampFn(), // Ensure this is the sentinel
     };
     // Use setDoc with merge: true to handle creation if document doesn't exist, or update if it does.
     await setClientDocFn(settingsDocRef, dataToUpdate, { merge: true });
