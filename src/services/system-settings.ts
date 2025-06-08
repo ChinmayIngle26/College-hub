@@ -1,24 +1,20 @@
 
-import { doc, getDoc, setDoc, serverTimestamp, updateDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+// REMOVE top-level client SDK imports to prevent server-side evaluation issues:
+// import { doc, getDoc, setDoc, serverTimestamp, updateDoc, Timestamp } from 'firebase/firestore';
+// import { db } from '@/lib/firebase/client';
 
-const SETTINGS_COLLECTION = 'systemSettings';
-const SETTINGS_DOC_ID = 'appConfiguration'; // Singleton document for all app-wide settings
-
-/**
- * Represents the structure of system-wide settings.
- */
 export interface SystemSettings {
   maintenanceMode: boolean;
-  allowNewUserRegistration: boolean; 
-  applicationName: string; 
+  allowNewUserRegistration: boolean;
+  applicationName: string;
   announcementTitle: string;
   announcementContent: string;
-  defaultItemsPerPage: number; 
-  lastUpdated?: Timestamp | null; 
-  // Add other settings fields here as needed
-  // e.g., defaultTheme?: 'light' | 'dark' | 'system';
+  defaultItemsPerPage: number;
+  lastUpdated?: Date | null; // Normalized to Date or null
 }
+
+const SETTINGS_COLLECTION = 'systemSettings';
+const SETTINGS_DOC_ID = 'appConfiguration';
 
 const defaultSettings: SystemSettings = {
   maintenanceMode: false,
@@ -27,84 +23,116 @@ const defaultSettings: SystemSettings = {
   announcementTitle: 'Welcome to College Hub!',
   announcementContent: 'Stay tuned for important updates and announcements. You can customize this message in the admin settings.',
   defaultItemsPerPage: 10,
-  lastUpdated: null, 
+  lastUpdated: null,
 };
 
 /**
- * Asynchronously retrieves the current system settings from Firestore.
- * If no settings document exists, it attempts to initialize default settings.
- * If Firestore is unavailable or an error occurs during fetch/initialization,
- * it logs a warning and returns a copy of the default settings to ensure the app can proceed.
+ * Asynchronously retrieves the current system settings.
+ * Uses Firebase Admin SDK when on the server, and Client SDK when on the client.
+ * Dynamically imports SDKs to avoid premature initialization in wrong environments.
  *
  * @returns A promise that resolves to a SystemSettings object.
  */
 export async function getSystemSettings(): Promise<SystemSettings> {
-  const callContext = (typeof window === 'undefined') ? 'server/middleware' : 'client';
+  const onServer = typeof window === 'undefined';
+  const callContext = onServer ? 'server/middleware/generateMetadata' : 'client';
 
-  if (!db) {
-    console.warn(`[${callContext}] Firestore DB instance is not available. Returning default system settings. This might occur during build or if Firebase is not initialized, or due to Firestore rules.`);
-    return { ...defaultSettings, lastUpdated: null }; // Return a copy
-  }
+  if (onServer) {
+    // Server-side: Use Firebase Admin SDK
+    try {
+      const { adminDb, adminApp } = await import('@/lib/firebase/admin');
+      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import('firebase-admin/firestore');
 
-  const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
-
-  try {
-    const docSnap = await getDoc(settingsDocRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      // console.log(`[${callContext}] Fetched system settings from Firestore:`, data);
-      // Merge fetched data with defaults to ensure all keys are present
-      return {
-        ...defaultSettings, // Start with defaults
-        ...data, // Override with fetched data
-        lastUpdated: data.lastUpdated instanceof Timestamp ? data.lastUpdated : (data.lastUpdated?.toDate ? new Timestamp(data.lastUpdated.seconds, data.lastUpdated.nanoseconds) : null), // Ensure lastUpdated is a Timestamp or null
-      } as SystemSettings;
-    } else {
-      console.warn(`[${callContext}] No system settings document found in Firestore (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}). Attempting to initialize with defaults.`);
-      try {
-        await setDoc(settingsDocRef, {
-          ...defaultSettings,
-          lastUpdated: serverTimestamp(), // Use server timestamp for creation
-        });
-        console.log(`[${callContext}] System settings initialized successfully in Firestore with default values.`);
-        return { ...defaultSettings, lastUpdated: null }; // Return defaults (lastUpdated will be set by server)
-      } catch (initError) {
-        console.error(`[${callContext}] Failed to initialize system settings in Firestore. Returning default settings. Error:`, initError);
-        return { ...defaultSettings, lastUpdated: null }; // Return default settings if initialization fails
+      if (!adminApp) {
+        console.warn(`[${callContext}] Firebase Admin App is not initialized. Returning default system settings.`);
+        return { ...defaultSettings };
       }
+      if (!adminDb) {
+        console.warn(`[${callContext}] Firebase Admin DB instance is not available. Returning default system settings.`);
+        return { ...defaultSettings };
+      }
+
+      const settingsAdminDocRef = adminDb.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID);
+      const docSnap = await settingsAdminDocRef.get();
+
+      if (docSnap.exists) {
+        const data = docSnap.data()!; // data() will not be undefined if exists() is true
+        return {
+          ...defaultSettings,
+          ...data,
+          lastUpdated: data.lastUpdated instanceof AdminTimestamp ? data.lastUpdated.toDate() : null,
+        };
+      } else {
+        console.warn(`[${callContext}] No system settings document found (Admin). Initializing with default values.`);
+        await settingsAdminDocRef.set({ ...defaultSettings, lastUpdated: AdminFieldValue.serverTimestamp() });
+        return { ...defaultSettings, lastUpdated: null }; // Return defaults (lastUpdated will be set by server)
+      }
+    } catch (error) {
+      console.error(`[${callContext}] Error fetching/initializing system settings (Admin). Error:`, error);
+      return { ...defaultSettings }; // Fallback to defaults on error
     }
-  } catch (error) {
-    console.error(`[${callContext}] Error fetching/processing system settings from Firestore (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}). Returning default settings. This might be due to Firestore rules or connectivity. Error:`, error);
-    // Return default settings on any other error to allow app to continue (e.g., for metadata)
-    return { ...defaultSettings, lastUpdated: null };
+  } else {
+    // Client-side: Use Firebase Client SDK (dynamically imported)
+    try {
+      const { db: clientDb } = await import('@/lib/firebase/client');
+      const { doc: clientDocFn, getDoc: getClientDocFn, setDoc: setClientDocFn, serverTimestamp: clientServerTimestampFn, Timestamp: ClientTimestamp } = await import('firebase/firestore');
+
+      if (!clientDb) {
+        console.warn(`[${callContext}] Firestore Client DB instance is not available. Returning default system settings.`);
+        return { ...defaultSettings };
+      }
+      const settingsClientDocRef = clientDocFn(clientDb, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
+      const docSnap = await getClientDocFn(settingsClientDocRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        return {
+          ...defaultSettings,
+          ...data,
+          lastUpdated: data.lastUpdated instanceof ClientTimestamp ? data.lastUpdated.toDate() : null,
+        };
+      } else {
+        console.warn(`[${callContext}] No system settings document found (Client). Initializing with default values.`);
+        await setClientDocFn(settingsClientDocRef, { ...defaultSettings, lastUpdated: clientServerTimestampFn() });
+        return { ...defaultSettings, lastUpdated: null }; // serverTimestamp will be applied
+      }
+    } catch (error) {
+      console.error(`[${callContext}] Error fetching/initializing system settings (Client). Error:`, error);
+      return { ...defaultSettings }; // Fallback to defaults on error
+    }
   }
 }
 
 /**
- * Asynchronously updates specified system settings in Firestore.
+ * Asynchronously updates specified system settings in Firestore using the Client SDK.
+ * This function is intended to be called from client-side components.
  *
  * @param settingsToUpdate A partial SystemSettings object containing the fields to update.
  * @returns A promise that resolves when the update is complete.
  * @throws Throws an error if Firestore is not initialized or if there's a Firebase error during update.
  */
 export async function updateSystemSettings(settingsToUpdate: Partial<SystemSettings>): Promise<void> {
-  const callContext = (typeof window === 'undefined') ? 'server/middleware' : 'client';
-  if (!db) {
-    console.error(`[${callContext}] Firestore DB instance is not available for updating system settings.`);
+  // This function is called from client-side (AdminSettingsPage), so it should use client SDK.
+  // Dynamically import client SDK parts.
+  const { db: clientDb } = await import('@/lib/firebase/client');
+  const { doc: clientDocFn, setDoc: setClientDocFn, serverTimestamp: clientServerTimestampFn } = await import('firebase/firestore');
+
+  const callContext = 'client (updateSystemSettings)';
+
+  if (!clientDb) {
+    console.error(`[${callContext}] Firestore Client DB instance is not available for updating system settings.`);
     throw new Error("Database connection error while updating system settings.");
   }
 
-  const settingsDocRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
+  const settingsDocRef = clientDocFn(clientDb, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
 
   try {
     const dataToUpdate = {
       ...settingsToUpdate,
-      lastUpdated: serverTimestamp(),
+      lastUpdated: clientServerTimestampFn(),
     };
     // Use setDoc with merge: true to handle creation if document doesn't exist, or update if it does.
-    await setDoc(settingsDocRef, dataToUpdate, { merge: true });
-    // console.log(`[${callContext}] System settings updated/created successfully with:`, dataToUpdate);
+    await setClientDocFn(settingsDocRef, dataToUpdate, { merge: true });
   } catch (error) {
     console.error(`[${callContext}] Error updating/creating system settings (path: ${SETTINGS_COLLECTION}/${SETTINGS_DOC_ID}):`, error);
     if (error instanceof Error && 'code' in error) {
