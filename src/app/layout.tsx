@@ -8,6 +8,8 @@ import { AuthProvider } from '@/context/auth-context';
 import { ThemeProvider } from '@/context/theme-provider';
 import { getSystemSettings } from '@/services/system-settings';
 
+export const runtime = 'nodejs'; // Force Node.js runtime for this segment
+
 const inter = Inter({ // Initialize Inter font
   subsets: ['latin'],
   variable: '--font-sans', // Define CSS variable
