@@ -5,9 +5,14 @@ import * as z from 'zod';
 import { addLeaveApplication } from '@/services/leaveApplications';
 import { sendLeaveNotification } from '@/ai/flows/send-leave-notification-flow';
 import type { LeaveApplicationFormData, LeaveType } from '@/types/leave';
-import { auth } from '@/lib/firebase/client'; // Assuming auth can give current user
-import { cookies } from 'next/headers'; // To get user from cookie if auth object is not directly available
-import { adminAuth } from '@/lib/firebase/admin'; // If you need to verify token server-side
+// Removed client auth import as it's not directly used here for UID
+// import { auth } from '@/lib/firebase/client'; 
+import { cookies } from 'next/headers';
+// Removed adminAuth for token verification as UID is passed directly
+// import { adminAuth } from '@/lib/firebase/admin'; 
+
+// Admin SDK imports for getStudentDetailsForNotification
+import { adminDb, adminInitializationError } from '@/lib/firebase/admin';
 
 const leaveApplicationSchema = z.object({
   leaveType: z.enum(['Sick Leave', 'Casual Leave', 'Emergency Leave', 'Other']),
@@ -16,7 +21,7 @@ const leaveApplicationSchema = z.object({
   reason: z.string().min(10, { message: 'Reason must be at least 10 characters long.' }).max(500),
 }).refine(data => data.endDate >= data.startDate, {
   message: "End date cannot be before start date.",
-  path: ["endDate"], // path of error
+  path: ["endDate"], 
 });
 
 
@@ -27,47 +32,18 @@ export interface SubmitLeaveApplicationState {
   applicationId?: string;
 }
 
-async function getCurrentUserId(): Promise<string | null> {
-  const authToken = cookies().get('firebaseAuthToken')?.value;
-  if (!authToken) {
-    return null;
-  }
-  try {
-    // Verify the token using Firebase Admin SDK if you have it set up for server-side verification
-    // For client-side Firebase auth, this step is usually handled differently,
-    // but in server actions, you need a secure way to get the UID.
-    // If not using Admin SDK here, this implies trust in the cookie or you'd pass UID from client.
-    // For a more robust solution, verify token with Admin SDK.
-    // For now, let's assume if the cookie exists, it's a placeholder for a logged-in user.
-    // A proper implementation would involve Firebase Admin SDK to verify and decode the token.
-    // const decodedToken = await adminAuth.verifyIdToken(authToken);
-    // return decodedToken.uid;
-
-    // Placeholder: In a real app, you'd verify the token.
-    // Here, we'll rely on the fact that the client making the call is authenticated.
-    // The actual studentId will be passed from the client via useAuth().
-    // This function is more of a conceptual check.
-    if (auth.currentUser) { // This will be null on the server typically
-        return auth.currentUser.uid;
-    }
-    // If auth.currentUser is null (expected in server action without Admin SDK verification here),
-    // studentId MUST be passed directly to the action from client.
-    return null;
-  } catch (error) {
-    console.error("Error getting current user ID in server action:", error);
-    return null;
-  }
-}
+// getCurrentUserId is no longer strictly needed as studentId is passed directly and validated by server action context.
+// async function getCurrentUserId(): Promise<string | null> { ... }
 
 
 export async function submitLeaveApplicationAction(
-  studentId: string, // Explicitly pass studentId from client
+  studentId: string, 
   prevState: SubmitLeaveApplicationState | null,
   formData: FormData
 ): Promise<SubmitLeaveApplicationState> {
 
-  if (!studentId) {
-    return { success: false, message: "User not authenticated." };
+  if (!studentId) { // This studentId comes from useAuth().user.uid on the client
+    return { success: false, message: "User not authenticated or studentId missing." };
   }
 
   const rawFormData = {
@@ -87,79 +63,81 @@ export async function submitLeaveApplicationAction(
     };
   }
 
-  const validatedData = validationResult.data as LeaveApplicationFormData; // Zod ensures types
+  const validatedData = validationResult.data as LeaveApplicationFormData;
 
   try {
+    // addLeaveApplication now uses Admin SDK
     const applicationId = await addLeaveApplication(studentId, validatedData);
 
-    // Trigger email notification (fire and forget for now, or handle response)
-    // The parentEmail is fetched within addLeaveApplication service or passed to notification flow
-    // For sendLeaveNotification, studentName and parentEmail would be fetched inside or passed.
-    // Let's assume addLeaveApplication fetches student details and they are available.
-    // We need to fetch student details again or pass them through.
-    // For simplicity, the Genkit flow will need these. The `addLeaveApplication` stores it.
-    // The notification flow will retrieve them or be adapted.
-
-    // Let's pass the necessary details to the notification flow.
-    // We'll need to fetch the student's name and parent's email for the notification.
-    // This logic is already in `addLeaveApplication` to store it, but the notification flow needs it too.
-    // Ideally, `addLeaveApplication` would return these details or notification is part of its transaction.
-    // For now, let's assume `sendLeaveNotification` can also fetch user details if needed, or we pass them.
-
-    // To avoid re-fetching, we'd ideally get parentEmail and studentName from `addLeaveApplication`'s context
-    // Or, `addLeaveApplication` could directly call `sendLeaveNotification`
-    
-    // For now, the `addLeaveApplication` stores parentEmail. The notification flow will use it.
-    // The Genkit flow `sendLeaveNotificationFlow` is designed to take these as input.
-    // We need to get studentName and parentEmail. It's stored with the application, or from user profile.
+    // getStudentDetailsForNotification now uses Admin SDK
     const { studentName, parentEmail } = await getStudentDetailsForNotification(studentId);
 
     if (!parentEmail || !studentName) {
-        // This case should ideally not happen if signup enforces parent email
-        // and addLeaveApplication confirmed parentEmail existence.
-        console.warn(`Parent email or student name not found for student ${studentId} for notification.`);
-        // Proceed with application submission but flag notification issue
-    } else {
+        console.warn(`Parent email or student name not found for student ${studentId} for notification. Application submitted, but notification might fail or be incomplete.`);
+    }
+    
+    // Only proceed with notification if essential details are present
+    if (parentEmail && studentName) {
         sendLeaveNotification({
             parentEmail: parentEmail,
             studentName: studentName,
             leaveType: validatedData.leaveType,
-            startDate: validatedData.startDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
-            endDate: validatedData.endDate.toISOString().split('T')[0],     // Format as YYYY-MM-DD
+            startDate: validatedData.startDate.toISOString().split('T')[0], 
+            endDate: validatedData.endDate.toISOString().split('T')[0],     
             reason: validatedData.reason,
         }).then(notificationResult => {
             if (!notificationResult.success) {
-                console.warn("Leave application submitted, but notification failed:", notificationResult.message);
-                // Optionally, update toast or inform user about notification failure
+                console.warn("Leave application submitted, but notification sending failed:", notificationResult.message);
+            } else {
+                console.log("Leave notification sent successfully for application:", applicationId);
             }
         }).catch(notificationError => {
-            console.error("Error triggering leave notification flow:", notificationError);
+            console.error("Error triggering leave notification flow for application " + applicationId + ":", notificationError);
         });
+    } else {
+        console.log("Skipping notification for application " + applicationId + " due to missing parentEmail or studentName.");
     }
-
 
     return {
       success: true,
-      message: "Leave application submitted successfully! A notification has been sent to your parent.",
+      message: "Leave application submitted successfully! A notification has been sent to your parent (if details were available).",
       applicationId,
     };
   } catch (error) {
-    console.error("Error submitting leave application:", error);
+    console.error("Error submitting leave application in action:", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "An unexpected error occurred.",
+      message: error instanceof Error ? error.message : "An unexpected error occurred during leave submission.",
     };
   }
 }
 
-// Helper to get student details needed for notification
+// Helper to get student details needed for notification using Admin SDK
 async function getStudentDetailsForNotification(studentId: string): Promise<{ studentName: string | null; parentEmail: string | null }> {
-    if (!db) throw new Error("Firestore not initialized");
-    const userDocRef = doc(db, "users", studentId);
-    const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists()) {
-        const data = userDocSnap.data();
-        return { studentName: data.name || null, parentEmail: data.parentEmail || null };
+    console.log(`[Action:getStudentDetails] Attempting to fetch details for studentId: '${studentId}' using Admin SDK.`);
+    if (adminInitializationError) {
+        console.error('[Action:getStudentDetails] Firebase Admin SDK failed to initialize. Cannot fetch student details.', adminInitializationError);
+        // Return nulls or throw, depending on how critical this is for the flow
+        return { studentName: null, parentEmail: null }; 
     }
-    return { studentName: null, parentEmail: null };
+    if (!adminDb) {
+        console.error('[Action:getStudentDetails] Firebase Admin DB is not initialized. Cannot fetch student details for notification.');
+        return { studentName: null, parentEmail: null };
+    }
+
+    try {
+        const userAdminDocRef = adminDb.collection("users").doc(studentId);
+        const userDocSnap = await userAdminDocRef.get();
+        if (userDocSnap.exists) {
+            const data = userDocSnap.data()!;
+            console.log(`[Action:getStudentDetails] Successfully fetched details for studentId '${studentId}': Name: ${data.name}, ParentEmail: ${data.parentEmail}`);
+            return { studentName: data.name || null, parentEmail: data.parentEmail || null };
+        } else {
+            console.warn(`[Action:getStudentDetails] User document not found for studentId '${studentId}' via Admin SDK.`);
+            return { studentName: null, parentEmail: null };
+        }
+    } catch (error) {
+        console.error(`[Action:getStudentDetails] Error fetching user details for studentId '${studentId}' via Admin SDK:`, error);
+        return { studentName: null, parentEmail: null }; // Fallback on error
+    }
 }
