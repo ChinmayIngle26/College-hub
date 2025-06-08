@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['firebase-admin', 'google-auth-library'],
+    serverComponentsExternalPackages: ['firebase-admin', 'google-auth-library', '@genkit-ai/googleai'],
   },
 };
 

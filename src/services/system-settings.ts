@@ -1,3 +1,4 @@
+
 // src/services/system-settings.ts
 export interface SystemSettings {
   maintenanceMode: boolean;
@@ -33,24 +34,18 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   const isEdgeEnvironment = onServer && typeof globalThis.EdgeRuntime === 'string';
   const callContext = isEdgeEnvironment ? 'server-edge' : (onServer ? 'server-node' : 'client');
 
-  // console.log(`[SystemSettings:${callContext}] getSystemSettings called.`);
+  console.log(`[SystemSettings:${callContext}] getSystemSettings called.`);
 
   if (isEdgeEnvironment) {
-    // console.log(`[SystemSettings:server-edge] In Edge Runtime. Importing from admin.edge.ts.`);
-    // This path should NOT attempt to import 'firebase-admin' or 'admin.server.ts'
-    try {
-        const adminEdgeModule = await import('@/lib/firebase/admin.edge');
-        if (adminEdgeModule.adminInitializationError) {
-            // console.warn(`[SystemSettings:server-edge] Admin SDK (Edge Placeholder) status: ${adminEdgeModule.adminInitializationError.message}. Returning default system settings.`);
-        }
-    } catch (e) {
-        console.error(`[SystemSettings:server-edge] CRITICAL: Failed to import admin.edge.ts. This should not happen. Error: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    return { ...defaultSettings, lastUpdated: new Date() }; // Always return defaults from edge for now
+    console.log(`[SystemSettings:server-edge] In Edge Runtime. Returning default system settings directly.`);
+    // Directly return default settings for Edge. No dynamic import of admin.edge.ts needed here
+    // as it was only used to check an error that's static in admin.edge.ts and then defaults were returned.
+    // This simplifies the path for the Edge bundler.
+    return { ...defaultSettings, lastUpdated: new Date() };
   }
 
   if (onServer && !isEdgeEnvironment) { // Explicitly Node.js server environment
-    // console.log(`[SystemSettings:server-node] Attempting to use Firebase Admin SDK via admin.server.ts.`);
+    console.log(`[SystemSettings:server-node] In Node.js server environment. Importing from @/lib/firebase/admin.server.`);
     try {
       // Dynamically import the Node.js specific admin module
       const { adminDb, adminApp, adminInitializationError } = await import('@/lib/firebase/admin.server');
@@ -70,7 +65,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
       if (docSnap.exists) {
         const data = docSnap.data()!;
-        // console.log(`[SystemSettings:server-node] Fetched settings from Firestore (Admin).`);
+        console.log(`[SystemSettings:server-node] Fetched settings from Firestore (Admin).`);
         return {
           ...defaultSettings,
           ...data,
@@ -87,7 +82,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     }
   } else if (!onServer) {
     // Client-side: Use Firebase Client SDK
-    // console.log(`[SystemSettings:client] Attempting to use Firebase Client SDK.`);
+    console.log(`[SystemSettings:client] Attempting to use Firebase Client SDK.`);
     try {
       const { db: clientDb } = await import('@/lib/firebase/client');
       const { doc: clientDocFn, getDoc: getClientDocFn, setDoc: setClientDocFn, serverTimestamp: clientServerTimestampFn, Timestamp: ClientTimestamp } = await import('firebase/firestore');
@@ -101,7 +96,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // console.log(`[SystemSettings:client] Fetched settings from Firestore (Client).`);
+        console.log(`[SystemSettings:client] Fetched settings from Firestore (Client).`);
         return {
           ...defaultSettings,
           ...data,
