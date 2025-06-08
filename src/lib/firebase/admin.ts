@@ -1,25 +1,17 @@
-
 // src/lib/firebase/admin.ts
-// This file is now DEPRECATED and will be removed or serve as a general note.
-// Use admin.node.ts for Node.js specific Admin SDK initialization.
-// Use admin.edge.ts for Edge Runtime (which essentially does nothing for Admin SDK).
+// THIS FILE IS DEPRECATED.
+// Firebase Admin SDK initialization is now split into:
+// - src/lib/firebase/admin.server.ts (for Node.js server environments)
+// - src/lib/firebase/admin.edge.ts (placeholder for Edge environments)
+//
+// Please update imports accordingly.
+// Services like system-settings.ts will conditionally import the correct module.
+// Server Actions or other Node.js-only server code should directly import from 'admin.server.ts'.
 
-/**
- * @deprecated Use `admin.node.ts` for Node.js environments or handle Edge/Client specific logic separately.
- * This file is kept temporarily to avoid breaking existing direct imports but should be refactored.
- */
-
-constdeprecationMessage = "src/lib/firebase/admin.ts is deprecated. Use admin.node.ts for Node.js Admin SDK or admin.edge.ts for Edge placeholder.";
+const deprecationMessage = "src/lib/firebase/admin.ts is deprecated. Use admin.server.ts for Node.js Admin SDK or admin.edge.ts for Edge placeholder, or rely on services that conditionally import these.";
 console.warn(deprecationMessage);
 
-// Exporting nulls or error objects to minimize breakage if anything still imports this directly.
 export const adminApp = undefined;
 export const adminAuth = null;
 export const adminDb = null;
 export const adminInitializationError = new Error(deprecationMessage + " No Admin SDK initialized from this file.");
-
-// You might want to re-export from admin.node.ts if there's a common, non-environment-specific
-// utility function that could live here, but generally, keep Node/Edge specific logic separate.
-// For now, this file will act as a clear indicator of deprecation.
-
-    

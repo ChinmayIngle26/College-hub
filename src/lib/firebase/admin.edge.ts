@@ -1,4 +1,3 @@
-
 // src/lib/firebase/admin.edge.ts
 // This file is a placeholder for Admin SDK exports when in an Edge Runtime.
 // It does NOT import or initialize 'firebase-admin'.
@@ -10,4 +9,4 @@ export const adminAuth = null;
 export const adminDb = null;
 export const adminInitializationError = new Error(edgeErrorMsg);
 
-console.warn(`Firebase Admin (Edge Placeholder): ${edgeErrorMsg}`);
+// console.warn(`Firebase Admin (Edge Placeholder): ${edgeErrorMsg}`); // Log only once if needed, or remove for cleaner logs

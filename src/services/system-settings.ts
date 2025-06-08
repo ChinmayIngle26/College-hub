@@ -1,4 +1,3 @@
-
 // src/services/system-settings.ts
 export interface SystemSettings {
   maintenanceMode: boolean;
@@ -25,8 +24,7 @@ const defaultSettings: SystemSettings = {
 
 /**
  * Asynchronously retrieves the current system settings.
- * Uses Firebase Admin SDK (via admin.node.ts) when on the server (Node.js runtime).
- * Returns default settings if in Edge Runtime or on client-side without Admin SDK access.
+ * Conditionally imports Admin SDK wrappers based on runtime environment.
  *
  * @returns A promise that resolves to a SystemSettings object.
  */
@@ -38,25 +36,32 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   // console.log(`[SystemSettings:${callContext}] getSystemSettings called.`);
 
   if (isEdgeEnvironment) {
-    console.warn(`[SystemSettings:server-edge] Running in an Edge Runtime. Firebase Admin SDK will not be used. Returning default system settings.`);
-    // Optionally, you could import from admin.edge.ts to log its specific message, but returning defaults is fine.
-    // const { adminInitializationError } = await import('@/lib/firebase/admin.edge');
-    // console.warn(`[SystemSettings:server-edge] Admin SDK status from admin.edge.ts: ${adminInitializationError?.message}`);
-    return { ...defaultSettings, lastUpdated: new Date() };
+    // console.log(`[SystemSettings:server-edge] In Edge Runtime. Importing from admin.edge.ts.`);
+    // This path should NOT attempt to import 'firebase-admin' or 'admin.server.ts'
+    try {
+        const adminEdgeModule = await import('@/lib/firebase/admin.edge');
+        if (adminEdgeModule.adminInitializationError) {
+            // console.warn(`[SystemSettings:server-edge] Admin SDK (Edge Placeholder) status: ${adminEdgeModule.adminInitializationError.message}. Returning default system settings.`);
+        }
+    } catch (e) {
+        console.error(`[SystemSettings:server-edge] CRITICAL: Failed to import admin.edge.ts. This should not happen. Error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return { ...defaultSettings, lastUpdated: new Date() }; // Always return defaults from edge for now
   }
 
   if (onServer && !isEdgeEnvironment) { // Explicitly Node.js server environment
-    // console.log(`[SystemSettings:server-node] Attempting to use Firebase Admin SDK via admin.node.ts.`);
+    // console.log(`[SystemSettings:server-node] Attempting to use Firebase Admin SDK via admin.server.ts.`);
     try {
-      const { adminDb, adminApp, adminInitializationError } = await import('@/lib/firebase/admin.node');
-      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import('firebase-admin/firestore'); // Typesafe import for Admin SDK specific types
+      // Dynamically import the Node.js specific admin module
+      const { adminDb, adminApp, adminInitializationError } = await import('@/lib/firebase/admin.server');
+      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import('firebase-admin/firestore');
 
       if (adminInitializationError) {
-        console.error(`[SystemSettings:server-node] Firebase Admin SDK (admin.node.ts) initialization failed previously. Error: ${adminInitializationError.message}. Returning default system settings.`);
+        console.error(`[SystemSettings:server-node] Firebase Admin SDK (admin.server.ts) initialization failed previously. Error: ${adminInitializationError.message}. Returning default system settings.`);
         return { ...defaultSettings };
       }
-      if (!adminDb) { // Check adminDb specifically
-        console.warn(`[SystemSettings:server-node] Firebase Admin DB (from admin.node.ts) is not available. Returning default system settings.`);
+      if (!adminDb) {
+        console.warn(`[SystemSettings:server-node] Firebase Admin DB (from admin.server.ts) is not available. Returning default system settings.`);
         return { ...defaultSettings };
       }
 
@@ -77,7 +82,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
         return { ...defaultSettings, lastUpdated: new Date() };
       }
     } catch (error: any) {
-      console.error(`[SystemSettings:server-node] Error fetching/initializing system settings (Admin via admin.node.ts). Error: ${error.message}. Stack: ${error.stack}. Returning default system settings.`);
+      console.error(`[SystemSettings:server-node] Error fetching/initializing system settings (Admin via admin.server.ts). Error: ${error.message}. Stack: ${error.stack}. Returning default system settings.`);
       return { ...defaultSettings };
     }
   } else if (!onServer) {

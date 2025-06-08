@@ -4,11 +4,11 @@
 import * as z from 'zod';
 import { addLeaveApplication } from '@/services/leaveApplications';
 import { sendLeaveNotification } from '@/ai/flows/send-leave-notification-flow';
-import type { LeaveApplicationFormData } from '@/types/leave'; // Keep LeaveType from here
+import type { LeaveApplicationFormData } from '@/types/leave';
 import { cookies } from 'next/headers';
 
-// Admin SDK imports for getStudentDetailsForNotification (now from admin.node.ts)
-import { adminDb, adminInitializationError } from '@/lib/firebase/admin.node'; // UPDATED IMPORT
+// Admin SDK imports for getStudentDetailsForNotification (now from admin.server.ts)
+import { adminDb, adminInitializationError } from '@/lib/firebase/admin.server'; // UPDATED IMPORT
 
 const leaveApplicationSchema = z.object({
   leaveType: z.enum(['Sick Leave', 'Casual Leave', 'Emergency Leave', 'Other']),
@@ -58,10 +58,10 @@ export async function submitLeaveApplicationAction(
   const validatedData = validationResult.data as LeaveApplicationFormData;
 
   try {
-    // addLeaveApplication now uses Admin SDK from admin.node.ts
+    // addLeaveApplication now uses Admin SDK from admin.server.ts
     const applicationId = await addLeaveApplication(studentId, validatedData);
 
-    // getStudentDetailsForNotification now uses Admin SDK from admin.node.ts
+    // getStudentDetailsForNotification now uses Admin SDK from admin.server.ts
     const { studentName, parentEmail } = await getStudentDetailsForNotification(studentId);
 
     if (!parentEmail || !studentName) {
@@ -103,15 +103,15 @@ export async function submitLeaveApplicationAction(
   }
 }
 
-// Helper to get student details needed for notification using Admin SDK from admin.node.ts
+// Helper to get student details needed for notification using Admin SDK from admin.server.ts
 async function getStudentDetailsForNotification(studentId: string): Promise<{ studentName: string | null; parentEmail: string | null }> {
-    console.log(`[Action:getStudentDetails] Attempting to fetch details for studentId: '${studentId}' using Admin SDK (admin.node.ts).`);
+    console.log(`[Action:getStudentDetails] Attempting to fetch details for studentId: '${studentId}' using Admin SDK (admin.server.ts).`);
     if (adminInitializationError) {
-        console.error('[Action:getStudentDetails] Firebase Admin SDK (admin.node.ts) failed to initialize. Cannot fetch student details.', adminInitializationError);
+        console.error('[Action:getStudentDetails] Firebase Admin SDK (admin.server.ts) failed to initialize. Cannot fetch student details.', adminInitializationError);
         return { studentName: null, parentEmail: null };
     }
     if (!adminDb) {
-        console.error('[Action:getStudentDetails] Firebase Admin DB (from admin.node.ts) is not initialized. Cannot fetch student details for notification.');
+        console.error('[Action:getStudentDetails] Firebase Admin DB (from admin.server.ts) is not initialized. Cannot fetch student details for notification.');
         return { studentName: null, parentEmail: null };
     }
 
@@ -120,14 +120,14 @@ async function getStudentDetailsForNotification(studentId: string): Promise<{ st
         const userDocSnap = await userAdminDocRef.get();
         if (userDocSnap.exists) {
             const data = userDocSnap.data()!;
-            console.log(`[Action:getStudentDetails] Successfully fetched details for studentId '${studentId}' (Admin SDK from admin.node.ts): Name: ${data.name}, ParentEmail: ${data.parentEmail}`);
+            console.log(`[Action:getStudentDetails] Successfully fetched details for studentId '${studentId}' (Admin SDK from admin.server.ts): Name: ${data.name}, ParentEmail: ${data.parentEmail}`);
             return { studentName: data.name || null, parentEmail: data.parentEmail || null };
         } else {
-            console.warn(`[Action:getStudentDetails] User document not found for studentId '${studentId}' via Admin SDK (admin.node.ts).`);
+            console.warn(`[Action:getStudentDetails] User document not found for studentId '${studentId}' via Admin SDK (admin.server.ts).`);
             return { studentName: null, parentEmail: null };
         }
     } catch (error) {
-        console.error(`[Action:getStudentDetails] Error fetching user details for studentId '${studentId}' via Admin SDK (admin.node.ts):`, error);
+        console.error(`[Action:getStudentDetails] Error fetching user details for studentId '${studentId}' via Admin SDK (admin.server.ts):`, error);
         return { studentName: null, parentEmail: null };
     }
 }
