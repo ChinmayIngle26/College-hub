@@ -1,7 +1,7 @@
 
 // 'use server'; // REMOVED: To allow client-side calls to getLeaveApplicationsByStudentId with client auth context
 import { db, auth } from '@/lib/firebase/client'; // Ensure auth is imported
-import { collection, addDoc, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, Timestamp, orderBy, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import type { LeaveApplication, LeaveApplicationFormData } from '@/types/leave';
 import type { StudentProfile } from './profile';
 
@@ -36,7 +36,7 @@ export async function addLeaveApplication(
     console.warn(`Parent's email not found in student profile for studentId: ${studentId}. Application will proceed.`);
   }
 
-  const newLeaveApplication: Omit<LeaveApplication, 'id'> = {
+  const newLeaveApplication: Omit<LeaveApplication, 'id' | 'appliedAt'> & { appliedAt: any } = { // Allow 'any' for serverTimestamp before write
     studentId,
     studentName: studentData.name || 'N/A',
     parentEmail: studentData.parentEmail || '',
@@ -45,7 +45,7 @@ export async function addLeaveApplication(
     endDate: Timestamp.fromDate(formData.endDate),
     reason: formData.reason,
     status: 'Pending',
-    appliedAt: Timestamp.now(),
+    appliedAt: serverTimestamp(), // Use Firestore server-side timestamp
   };
 
   try {
@@ -108,7 +108,7 @@ export async function getLeaveApplicationsByStudentId(studentId: string): Promis
           return new Timestamp(field.seconds, field.nanoseconds);
         }
         console.warn(`Invalid timestamp data for field in doc ${doc.id}:`, field);
-        return Timestamp.now();
+        return Timestamp.now(); // Fallback, should ideally not happen with serverTimestamp
       };
       return {
         id: doc.id,
