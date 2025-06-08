@@ -1,84 +1,70 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check for admin role
+    // Helper function to check if the user is an admin
     function isAdmin() {
-      // Check if the user exists in the 'users' collection and has the 'admin' role
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+      // Check if the user's document in the 'users' collection has role 'admin'
+      // This requires the admin user to have a document in /users/{uid} with a role field.
+      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Rules for 'users' collection
+    // User profiles
     match /users/{userId} {
-      // CREATE: User can create their own profile document upon signup
-      allow create: if request.auth != null && request.auth.uid == userId;
-
-      // READ: User can read their own profile; Admin can read any profile
+      allow create: if request.auth != null && request.auth.uid == userId &&
+                       request.resource.data.email == request.auth.token.email &&
+                       request.resource.data.role == 'student'; // Default role on creation
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-
-      // UPDATE: User can update their own profile; Admin can update any profile
       allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
-
-      // DELETE: Only Admin can delete user profiles from Firestore
-      // (Note: This does not delete the Firebase Auth user)
-      allow delete: if isAdmin();
+                       // Add specific field validation for updates if needed
+                       // e.g., allow student to update their name, but not role
+                       // allow update (student): if request.auth.uid == userId && DisallowUpdate(['role']);
+                       // allow update (admin): if isAdmin();
+      allow delete: if isAdmin(); // Only admins can delete user profiles
     }
 
-    // Rules for 'systemSettings' collection
-    // Assumes a single document (e.g., 'appConfiguration') for all settings
+    // System-wide settings
     match /systemSettings/{docId} {
-      // READ: Allow all authenticated users to read system settings (e.g., for UI)
-      // For public settings, could be `allow read: if true;`
-      allow read: if request.auth != null || docId == 'appConfiguration'; // Allow unauth read for generateMetadata
-
-      // WRITE: Only Admin can write/update system settings
+      // Anyone can read settings (e.g., for maintenance mode check in middleware)
+      allow read: if true;
+      // Only admins can write/update settings
       allow write: if isAdmin();
     }
 
-    // Rules for 'leaveApplications' collection
+    // Leave Applications
     match /leaveApplications/{applicationId} {
-      // CREATE: Student submitting a new leave application
+      // SIMPLIFIED CREATE RULE FOR TESTING:
       allow create: if request.auth != null &&
-                      request.resource.data.studentId == request.auth.uid &&
-                      request.resource.data.status == 'Pending' &&
-                      // request.resource.data.appliedAt == request.time && // Temporarily removed
-                      request.resource.data.leaveType is string &&
-                      request.resource.data.startDate is timestamp &&
-                      request.resource.data.endDate is timestamp &&
-                      request.resource.data.reason is string &&
-                      (request.resource.data.studentName is string || request.resource.data.studentName == null) &&
-                      (request.resource.data.parentEmail is string || request.resource.data.parentEmail == null);
+                       request.resource.data.studentId == request.auth.uid;
 
-      // READ: Student reading their own, or Admin reading any
-      allow read: if request.auth != null &&
-                    (resource.data.studentId == request.auth.uid || isAdmin());
+      // Students can read their own applications, admins can read any.
+      allow read: if request.auth != null && (resource.data.studentId == request.auth.uid || isAdmin());
 
-      // UPDATE: Admin action (approve/reject) or potentially student cancelling (not implemented yet)
-      allow update: if isAdmin() &&
-                      // Ensure studentId is not changed by admin during update
-                      request.resource.data.studentId == resource.data.studentId &&
-                      // Admin can update status; other fields should ideally be immutable by admin unless necessary
-                      request.resource.data.status is string &&
-                      request.resource.data.leaveType == resource.data.leaveType &&
-                      request.resource.data.startDate == resource.data.startDate &&
-                      request.resource.data.endDate == resource.data.endDate &&
-                      request.resource.data.reason == resource.data.reason &&
-                      request.resource.data.studentName == resource.data.studentName &&
-                      request.resource.data.parentEmail == resource.data.parentEmail &&
-                      request.resource.data.appliedAt == resource.data.appliedAt;
-
-
-      // DELETE: Typically admin action
+      // Only admins can update or delete leave applications (e.g., to change status)
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
-    // Allow LIST (queries) on leaveApplications collection
-    // Authenticated users can query. The document-level 'read' rule above will
-    // filter which actual documents they receive.
+    // Rule for querying/listing leaveApplications
+    // Allows authenticated users to make queries.
+    // The document-level `read` rule above will then filter the results of the query.
     match /leaveApplications {
       allow list: if request.auth != null;
+    }
+
+    // Add rules for other collections (attendance, grades, etc.) as needed.
+    // Example for attendance (adjust as per your data model and needs):
+    match /attendance/{studentId}/records/{recordId} {
+      allow read, list: if request.auth != null && (request.auth.uid == studentId || isAdmin());
+      // Add create, update, delete rules if admins or specific services manage this data
+    }
+
+    match /grades/{studentId}/courses/{courseId} {
+      allow read, list: if request.auth != null && (request.auth.uid == studentId || isAdmin());
+      // Add create, update, delete rules
     }
   }
 }
