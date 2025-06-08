@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -6,64 +5,80 @@ service cloud.firestore {
 
     // Helper function to check for admin role
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == "admin@gmail.com";
+      // Check if the user exists in the 'users' collection and has the 'admin' role
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // User profiles
-    // Users can create their own profile.
-    // Users can read and update their own profile. Admins can read/update any profile.
-    // Admins can delete user profiles.
+    // Rules for 'users' collection
     match /users/{userId} {
+      // CREATE: User can create their own profile document upon signup
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow read, update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      // READ: User can read their own profile; Admin can read any profile
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      // UPDATE: User can update their own profile; Admin can update any profile
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      // DELETE: Only Admin can delete user profiles from Firestore
+      // (Note: This does not delete the Firebase Auth user)
       allow delete: if isAdmin();
-
-      // Deny access to any subcollections under users by default
-      match /{document=**} {
-        allow read, write: if false;
-      }
     }
 
-    // System Settings
-    // System settings are publicly readable.
-    // Only admins can create, update, or delete system settings.
+    // Rules for 'systemSettings' collection
+    // Assumes a single document (e.g., 'appConfiguration') for all settings
     match /systemSettings/{docId} {
-      allow read: if true; // Allow public read for settings like app name, maintenance mode
-      allow write: if isAdmin(); // create, update, delete
+      // READ: Allow all authenticated users to read system settings (e.g., for UI)
+      // For public settings, could be `allow read: if true;`
+      allow read: if request.auth != null || docId == 'appConfiguration'; // Allow unauth read for generateMetadata
 
-      // Deny access to any subcollections under systemSettings by default
-      match /{document=**} {
-        allow read, write: if false;
-      }
+      // WRITE: Only Admin can write/update system settings
+      allow write: if isAdmin();
     }
 
-    // Leave Applications
-    // Students can create their own leave applications.
-    // Students can read their own leave applications. Admins can read all.
-    // Only admins can update (e.g., approve/reject) or delete leave applications.
+    // Rules for 'leaveApplications' collection
     match /leaveApplications/{applicationId} {
-      allow create: if request.auth != null && request.resource.data.studentId == request.auth.uid;
-      allow read: if request.auth != null && (resource.data.studentId == request.auth.uid || isAdmin());
-      allow update, delete: if isAdmin();
+      // CREATE: Student submitting a new leave application
+      allow create: if request.auth != null &&
+                      request.resource.data.studentId == request.auth.uid &&
+                      request.resource.data.status == 'Pending' &&
+                      // request.resource.data.appliedAt == request.time && // Temporarily removed
+                      request.resource.data.leaveType is string &&
+                      request.resource.data.startDate is timestamp &&
+                      request.resource.data.endDate is timestamp &&
+                      request.resource.data.reason is string &&
+                      (request.resource.data.studentName is string || request.resource.data.studentName == null) &&
+                      (request.resource.data.parentEmail is string || request.resource.data.parentEmail == null);
 
-      // Deny access to any subcollections under leaveApplications by default
-      match /{document=**} {
-        allow read, write: if false;
-      }
+      // READ: Student reading their own, or Admin reading any
+      allow read: if request.auth != null &&
+                    (resource.data.studentId == request.auth.uid || isAdmin());
+
+      // UPDATE: Admin action (approve/reject) or potentially student cancelling (not implemented yet)
+      allow update: if isAdmin() &&
+                      // Ensure studentId is not changed by admin during update
+                      request.resource.data.studentId == resource.data.studentId &&
+                      // Admin can update status; other fields should ideally be immutable by admin unless necessary
+                      request.resource.data.status is string &&
+                      request.resource.data.leaveType == resource.data.leaveType &&
+                      request.resource.data.startDate == resource.data.startDate &&
+                      request.resource.data.endDate == resource.data.endDate &&
+                      request.resource.data.reason == resource.data.reason &&
+                      request.resource.data.studentName == resource.data.studentName &&
+                      request.resource.data.parentEmail == resource.data.parentEmail &&
+                      request.resource.data.appliedAt == resource.data.appliedAt;
+
+
+      // DELETE: Typically admin action
+      allow delete: if isAdmin();
     }
 
-    // Rule for querying the leaveApplications collection
-    // Authenticated users can list applications.
-    // The actual documents returned will be filtered by the document-level `read` rule above.
-    // This means students querying with `where('studentId', '==', their_uid)` will only get their own.
-    // Admins can query more broadly.
+    // Allow LIST (queries) on leaveApplications collection
+    // Authenticated users can query. The document-level 'read' rule above will
+    // filter which actual documents they receive.
     match /leaveApplications {
       allow list: if request.auth != null;
-    }
-
-    // Default deny for any other paths not explicitly matched
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }
