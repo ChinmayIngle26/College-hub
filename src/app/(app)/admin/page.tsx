@@ -25,9 +25,9 @@ interface UserData {
   studentId?: string;
   major?: string;
   email?: string;
-  parentEmail?: string; // Added parentEmail
+  parentEmail?: string;
   role?: string;
-  createdAt?: any; // Adjust if using a specific timestamp type
+  createdAt?: any;
 }
 
 export default function AdminPage() {
@@ -38,19 +38,19 @@ export default function AdminPage() {
   const [checkingRole, setCheckingRole] = useState(true);
   const [usersData, setUsersData] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' }); // Added parentEmail
+  const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' });
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
 
   useEffect(() => {
     if (authLoading) {
-      return; // Wait for authentication to complete
+      return;
     }
 
     if (!user) {
-      router.push('/signin'); // Redirect if not authenticated
-      setCheckingRole(false); // Ensure checkingRole is set if user is null
+      router.push('/signin');
+      setCheckingRole(false);
       return;
     }
 
@@ -58,11 +58,9 @@ export default function AdminPage() {
       setCheckingRole(true);
       let userIsCurrentlyAdmin = false;
 
-      // First, check the hardcoded admin email
       if (user.email === ADMIN_EMAIL) {
         userIsCurrentlyAdmin = true;
       } else {
-        // If not the hardcoded email, check Firestore role
         if (db) {
           try {
             const userDocRef = doc(db, 'users', user.uid);
@@ -81,7 +79,6 @@ export default function AdminPage() {
               description: "Could not verify admin role. Please check Firestore permissions.",
               variant: "destructive",
             });
-            // Fall through to potentially redirect if not admin
           }
         } else {
              toast({
@@ -110,15 +107,14 @@ export default function AdminPage() {
   }, [user, authLoading, router, toast]);
 
   const fetchUsers = async () => {
-    // Ensure db is available and user is admin before fetching
     if (!db || !isAdmin) {
-        if (!isAdmin && !checkingRole) { // Only log if not admin and role check is complete
+        if (!isAdmin && !checkingRole) {
              console.log("User is not admin, skipping fetchUsers.");
         }
         if (!db) {
             console.error("Firestore DB instance is not available in fetchUsers.");
         }
-        setLoadingUsers(false); // Ensure loading state is turned off
+        setLoadingUsers(false);
         return;
     }
     setLoadingUsers(true);
@@ -140,7 +136,7 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (isAdmin && !authLoading && !checkingRole) { // Fetch users only if isAdmin is true and checks are done
+    if (isAdmin && !authLoading && !checkingRole) {
       fetchUsers();
     }
   }, [isAdmin, authLoading, checkingRole]);
@@ -161,7 +157,7 @@ export default function AdminPage() {
     if (!db || !isAdmin) return;
 
     try {
-      if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email || !newUser.parentEmail || !newUser.role) { // Added parentEmail check
+      if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email || !newUser.parentEmail || !newUser.role) {
         toast({
           title: "Validation Error",
           description: "Please fill in all fields to create a new user.",
@@ -169,7 +165,6 @@ export default function AdminPage() {
         });
         return;
       }
-      // Basic email validation (can be more robust)
       if (!/\S+@\S+\.\S+/.test(newUser.email) || !/\S+@\S+\.\S+/.test(newUser.parentEmail)) {
         toast({
           title: "Validation Error",
@@ -179,7 +174,6 @@ export default function AdminPage() {
         return;
       }
       const usersCollection = collection(db, 'users');
-      // Admin can create users. Firestore rules should allow this.
       await addDoc(usersCollection, {
         ...newUser,
         createdAt: serverTimestamp(),
@@ -189,8 +183,8 @@ export default function AdminPage() {
         title: "Success",
         description: "User profile created successfully in Firestore.",
       });
-      fetchUsers(); // Refresh users list
-      setNewUser({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' }); // Reset parentEmail
+      fetchUsers();
+      setNewUser({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' });
     } catch (error) {
       console.error("Error creating user profile:", error);
       toast({
@@ -210,7 +204,7 @@ export default function AdminPage() {
     if (!db || !isAdmin || !editingUser || !editingUser.id) return;
 
     try {
-      if (!editingUser.name || !editingUser.studentId || !editingUser.major || !editingUser.email || !editingUser.parentEmail || !editingUser.role) { // Added parentEmail check
+      if (!editingUser.name || !editingUser.studentId || !editingUser.major || !editingUser.email || !editingUser.parentEmail || !editingUser.role) {
         toast({
           title: "Validation Error",
           description: "Please fill in all fields.",
@@ -218,7 +212,6 @@ export default function AdminPage() {
         });
         return;
       }
-      // Basic email validation
       if (!/\S+@\S+\.\S+/.test(editingUser.email) || (editingUser.parentEmail && !/\S+@\S+\.\S+/.test(editingUser.parentEmail))) {
         toast({
           title: "Validation Error",
@@ -230,14 +223,13 @@ export default function AdminPage() {
 
       const userDocRef = doc(db, 'users', editingUser.id);
       const { id, ...userDataToUpdate } = editingUser;
-      // Admin can update users. Firestore rules should allow this.
       await updateDoc(userDocRef, userDataToUpdate);
 
       toast({
         title: "Success",
         description: "User updated successfully.",
       });
-      fetchUsers(); // Refresh users list
+      fetchUsers();
       setIsEditModalOpen(false);
       setEditingUser(null);
     } catch (error) {
@@ -255,14 +247,13 @@ export default function AdminPage() {
     if (!db || !isAdmin) return;
     try {
       const userDocRef = doc(db, 'users', userId);
-      // Admin can delete users. Firestore rules should allow this.
       await deleteDoc(userDocRef);
 
       toast({
         title: "Success",
         description: "User profile deleted successfully from Firestore.",
       });
-      fetchUsers(); // Refresh users list
+      fetchUsers();
     } catch (error) {
       console.error("Error deleting user profile:", error);
       toast({
@@ -315,7 +306,6 @@ export default function AdminPage() {
         </CardHeader>
       </Card>
 
-      {/* User Management Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -340,7 +330,7 @@ export default function AdminPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Student ID</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Email</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Parent's Email</th> {/* New Column Header */}
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Parent's Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Major</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Role</th>
                         <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -352,7 +342,7 @@ export default function AdminPage() {
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">{u.name || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.studentId || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.email || 'N/A'}</td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.parentEmail || 'N/A'}</td> {/* New Column Data */}
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.parentEmail || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.major || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.role || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
@@ -393,7 +383,6 @@ export default function AdminPage() {
                 <p className="text-center text-muted-foreground">No user profiles found. Ensure Firestore rules allow listing users for admins.</p>
               )}
 
-              {/* Add New User Form */}
               <Card className="mt-6">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -415,7 +404,7 @@ export default function AdminPage() {
                       <Label htmlFor="newUserEmail">Email</Label>
                       <Input id="newUserEmail" name="email" type="email" value={newUser.email} onChange={handleInputChange} placeholder="user@example.com" />
                     </div>
-                    <div> {/* New Parent's Email Field */}
+                    <div>
                       <Label htmlFor="newUserParentEmail">Parent's Email</Label>
                       <Input id="newUserParentEmail" name="parentEmail" type="email" value={newUser.parentEmail} onChange={handleInputChange} placeholder="parent@example.com" />
                     </div>
@@ -434,7 +423,6 @@ export default function AdminPage() {
                         >
                             <option value="student">Student</option>
                             <option value="admin">Admin</option>
-                            {/* Add other roles as needed */}
                         </select>
                     </div>
                   </div>
@@ -450,7 +438,6 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
-      {/* Edit User Modal */}
       {editingUser && (
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
           <DialogContent>
@@ -471,7 +458,7 @@ export default function AdminPage() {
                 <Label htmlFor="editUserEmail">Email</Label>
                 <Input id="editUserEmail" name="email" type="email" value={editingUser.email || ''} onChange={handleEditInputChange} />
               </div>
-              <div> {/* New Parent's Email Field for Edit */}
+              <div>
                 <Label htmlFor="editUserParentEmail">Parent's Email</Label>
                 <Input id="editUserParentEmail" name="parentEmail" type="email" value={editingUser.parentEmail || ''} onChange={handleEditInputChange} />
               </div>
@@ -501,8 +488,6 @@ export default function AdminPage() {
         </Dialog>
       )}
 
-
-      {/* System Settings Section (Placeholder) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -518,7 +503,6 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
-      {/* Content Management Section (Placeholder) */}
       <Card>
         <CardHeader>
           <CardTitle>Content Management</CardTitle>
@@ -526,12 +510,8 @@ export default function AdminPage() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">Content management tools will be available here.</p>
-          {/* Example:
-          <Button>Manage Content</Button>
-          */}
         </CardContent>
       </Card>
     </div>
   );
 }
-
