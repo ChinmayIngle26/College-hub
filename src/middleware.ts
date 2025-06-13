@@ -1,38 +1,32 @@
-
 // src/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSystemSettings } from '@/services/system-settings';
-import type { SystemSettings } from '@/services/system-settings'; // Import SystemSettings type
+// Import from the new Edge-safe settings service
+import { getMinimalSettingsForMiddleware } from '@/services/middleware-settings';
+import type { MinimalSystemSettings } from '@/services/middleware-settings';
 
 const publicRoutes = ['/signin', '/signup'];
 const maintenanceRoute = '/maintenance';
 const adminRoutePrefix = '/admin';
 
-// Default settings structure, ensure it matches SystemSettings interface
-const defaultMiddlewareSettings: SystemSettings = {
+// Default settings structure, ensure it matches MinimalSystemSettings interface
+const defaultMinimalMiddlewareSettings: MinimalSystemSettings = {
   maintenanceMode: false,
-  allowNewUserRegistration: true,
-  applicationName: 'College Hub (Default)',
-  defaultItemsPerPage: 10,
-  announcementTitle: 'Welcome (Default)',
-  announcementContent: 'Default announcement content.',
-  lastUpdated: null,
 };
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const url = request.nextUrl.clone();
-  let settings: SystemSettings;
+  let settings: MinimalSystemSettings;
 
   try {
-    settings = await getSystemSettings();
-    // console.log(`Middleware: Fetched settings for ${pathname}. Maintenance Mode: ${settings.maintenanceMode}`);
+    settings = await getMinimalSettingsForMiddleware(); // Use the new Edge-safe function
+    // console.log(`Middleware: Fetched minimal settings for ${pathname}. Maintenance Mode: ${settings.maintenanceMode}`);
   } catch (error) {
-    console.error(`Middleware: CRITICAL Error fetching system settings for ${pathname}:`, error);
-    // Fallback to default settings if fetching fails catastrophically
-    settings = { ...defaultMiddlewareSettings };
-    // console.log(`Middleware: Using fallback default settings due to error for ${pathname}. Maintenance Mode: ${settings.maintenanceMode}`);
+    console.error(`Middleware: CRITICAL Error fetching minimal settings for ${pathname}:`, error);
+    // Fallback to default minimal settings if fetching fails
+    settings = { ...defaultMinimalMiddlewareSettings };
+    // console.log(`Middleware: Using fallback default minimal settings due to error for ${pathname}. Maintenance Mode: ${settings.maintenanceMode}`);
   }
 
   const hasAuthCookie = request.cookies.has('firebaseAuthToken');

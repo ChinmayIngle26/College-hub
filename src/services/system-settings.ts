@@ -38,18 +38,19 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
   if (isEdgeEnvironment) {
     console.log(`[SystemSettings:server-edge] In Edge Runtime. Returning default system settings directly.`);
-    // Directly return default settings for Edge. No dynamic import of admin.edge.ts needed here
-    // as it was only used to check an error that's static in admin.edge.ts and then defaults were returned.
-    // This simplifies the path for the Edge bundler.
+    // This path is for Edge, no firebase-admin imports.
     return { ...defaultSettings, lastUpdated: new Date() };
   }
 
   if (onServer && !isEdgeEnvironment) { // Explicitly Node.js server environment
-    console.log(`[SystemSettings:server-node] In Node.js server environment. Importing from @/lib/firebase/admin.server.`);
+    console.log(`[SystemSettings:server-node] In Node.js server environment. Preparing to import from admin.server.`);
     try {
-      // Dynamically import the Node.js specific admin module
-      const { adminDb, adminApp, adminInitializationError } = await import('@/lib/firebase/admin.server');
-      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import('firebase-admin/firestore');
+      // Use variables for import paths to potentially make them less "static" to the Edge bundler
+      const adminServerModulePath = '@/lib/firebase/admin.server';
+      const firestoreAdminModulePath = 'firebase-admin/firestore';
+
+      const { adminDb, adminApp, adminInitializationError } = await import(adminServerModulePath);
+      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import(firestoreAdminModulePath);
 
       if (adminInitializationError) {
         console.error(`[SystemSettings:server-node] Firebase Admin SDK (admin.server.ts) initialization failed previously. Error: ${adminInitializationError.message}. Returning default system settings.`);
