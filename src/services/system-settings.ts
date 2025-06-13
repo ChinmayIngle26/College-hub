@@ -25,66 +25,37 @@ const defaultSettings: SystemSettings = {
 
 /**
  * Asynchronously retrieves the current system settings.
- * Conditionally imports Admin SDK wrappers based on runtime environment.
+ * This version is now EXCLUSIVELY for Edge or Client-side.
+ * Node.js server-side metadata generation should fetch directly.
  *
  * @returns A promise that resolves to a SystemSettings object.
  */
 export async function getSystemSettings(): Promise<SystemSettings> {
   const onServer = typeof window === 'undefined';
   const isEdgeEnvironment = onServer && typeof globalThis.EdgeRuntime === 'string';
-  const callContext = isEdgeEnvironment ? 'server-edge' : (onServer ? 'server-node' : 'client');
+  const callContext = isEdgeEnvironment ? 'server-edge' : (onServer ? 'server-node-unexpected' : 'client');
 
   console.log(`[SystemSettings:${callContext}] getSystemSettings called.`);
 
   if (isEdgeEnvironment) {
     console.log(`[SystemSettings:server-edge] In Edge Runtime. Returning default system settings directly.`);
-    // This path is for Edge, no firebase-admin imports.
-    return { ...defaultSettings, lastUpdated: new Date() };
+    return { ...defaultSettings, lastUpdated: new Date() }; // Return defaults, no Admin SDK import
   }
 
-  if (onServer && !isEdgeEnvironment) { // Explicitly Node.js server environment
-    console.log(`[SystemSettings:server-node] In Node.js server environment. Preparing to import from admin.server.`);
-    try {
-      // Use variables for import paths to potentially make them less "static" to the Edge bundler
-      const adminServerModulePath = '@/lib/firebase/admin.server';
-      const firestoreAdminModulePath = 'firebase-admin/firestore';
+  if (onServer && !isEdgeEnvironment) {
+    // This block should ideally not be hit if Node.js specific callers (like generateMetadata)
+    // are modified to fetch settings directly.
+    // If it is hit, it means a Node.js server context is calling this generic getter,
+    // which no longer supports Admin SDK directly.
+    console.warn(`[SystemSettings:server-node-unexpected] UNEXPECTED CALL from Node.js server environment. This function no longer uses Admin SDK. Returning default settings. Node.js callers should fetch settings directly using admin.server.ts.`);
+    return { ...defaultSettings };
+  }
 
-      const { adminDb, adminApp, adminInitializationError } = await import(adminServerModulePath);
-      const { Timestamp: AdminTimestamp, FieldValue: AdminFieldValue } = await import(firestoreAdminModulePath);
-
-      if (adminInitializationError) {
-        console.error(`[SystemSettings:server-node] Firebase Admin SDK (admin.server.ts) initialization failed previously. Error: ${adminInitializationError.message}. Returning default system settings.`);
-        return { ...defaultSettings };
-      }
-      if (!adminDb) {
-        console.warn(`[SystemSettings:server-node] Firebase Admin DB (from admin.server.ts) is not available. Returning default system settings.`);
-        return { ...defaultSettings };
-      }
-
-      const settingsAdminDocRef = adminDb.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID);
-      const docSnap = await settingsAdminDocRef.get();
-
-      if (docSnap.exists) {
-        const data = docSnap.data()!;
-        console.log(`[SystemSettings:server-node] Fetched settings from Firestore (Admin).`);
-        return {
-          ...defaultSettings,
-          ...data,
-          lastUpdated: data.lastUpdated instanceof AdminTimestamp ? data.lastUpdated.toDate() : (data.lastUpdated && typeof data.lastUpdated.toDate === 'function' ? data.lastUpdated.toDate() : null),
-        };
-      } else {
-        console.warn(`[SystemSettings:server-node] No system settings document found (Admin). Initializing with default values.`);
-        await settingsAdminDocRef.set({ ...defaultSettings, lastUpdated: AdminFieldValue.serverTimestamp() });
-        return { ...defaultSettings, lastUpdated: new Date() };
-      }
-    } catch (error: any) {
-      console.error(`[SystemSettings:server-node] Error fetching/initializing system settings (Admin via admin.server.ts). Error: ${error.message}. Stack: ${error.stack}. Returning default system settings.`);
-      return { ...defaultSettings };
-    }
-  } else if (!onServer) {
-    // Client-side: Use Firebase Client SDK
+  // Client-side: Use Firebase Client SDK
+  if (!onServer) {
     console.log(`[SystemSettings:client] Attempting to use Firebase Client SDK.`);
     try {
+      // Dynamic imports for client-side Firebase
       const { db: clientDb } = await import('@/lib/firebase/client');
       const { doc: clientDocFn, getDoc: getClientDocFn, setDoc: setClientDocFn, serverTimestamp: clientServerTimestampFn, Timestamp: ClientTimestamp } = await import('firebase/firestore');
 
@@ -105,7 +76,8 @@ export async function getSystemSettings(): Promise<SystemSettings> {
         };
       } else {
         console.warn(`[SystemSettings:client] No system settings document found (Client). Initializing with default values.`);
-        await setClientDocFn(settingsClientDocRef, { ...defaultSettings, lastUpdated: clientServerTimestampFn() });
+        // Avoid writing from client here to prevent race conditions or permission issues for initial setup.
+        // Admin panel should handle initial creation if needed.
         return { ...defaultSettings, lastUpdated: new Date() };
       }
     } catch (error: any) {
@@ -114,6 +86,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     }
   }
 
+  // Fallback if somehow no condition was met (shouldn't happen)
   console.warn(`[SystemSettings] Unhandled case for getSystemSettings (onServer: ${onServer}, isEdgeEnvironment: ${isEdgeEnvironment}). Returning default system settings.`);
   return { ...defaultSettings };
 }
@@ -135,6 +108,7 @@ export async function updateSystemSettings(settingsToUpdate: Partial<SystemSetti
   try {
     const dataToUpdate = { ...settingsToUpdate, lastUpdated: clientServerTimestampFn() };
     await setClientDocFn(settingsDocRef, dataToUpdate, { merge: true });
+    console.log(`[SystemSettings:update] Successfully updated settings via client SDK.`);
   } catch (error) {
     console.error(`[SystemSettings:update] Error updating system settings (Client SDK):`, error);
      if (error instanceof Error && 'code' in error) {
