@@ -1,3 +1,4 @@
+
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 
@@ -5,22 +6,45 @@ import { db } from '@/lib/firebase/client';
  * Represents a student's profile information.
  */
 export interface StudentProfile {
-  /**
-   * The student's Firestore document ID (usually UID).
-   * Or the specific student ID field if different.
-   */
-  studentId: string; // Can represent UID or a specific student ID field
-  /**
-   * The student's name.
-   */
-  name: string;
-  /**
-   * The student's major.
-   */
-  major: string;
-  // Add other fields as needed, matching Firestore structure
-  email?: string; // Optional email
-  role?: string; // Optional role
+  // Existing
+  studentId: string; // Can represent UID or a specific student ID field from Firestore
+  name: string;      // Will be used as Full Name
+
+  // 1. Personal Information
+  profilePhotoUrl?: string;
+  dateOfBirth?: string; // e.g., "YYYY-MM-DD"
+  gender?: string;
+  contactNumber?: string;
+  email?: string; // Email address (already present, ensure it's used here)
+  permanentAddress?: string;
+  currentAddress?: string;
+  bloodGroup?: string;
+  emergencyContactName?: string;
+  emergencyContactNumber?: string;
+
+  // 2. Academic Details
+  enrollmentNumber?: string; // Could be same as studentId
+  courseProgram?: string; // e.g., B.Tech in AIML (was 'major')
+  department?: string;
+  currentYear?: number;
+  currentSemester?: number;
+  academicAdvisorName?: string;
+  sectionOrBatch?: string;
+  admissionDate?: string; // e.g., "YYYY-MM-DD"
+  modeOfAdmission?: string; // e.g., CET, Management
+
+  // 3. Documents (URLs or identifiers for viewing/downloading)
+  idCardUrl?: string;
+  admissionLetterUrl?: string;
+  marksheet10thUrl?: string;
+  marksheet12thUrl?: string;
+  migrationCertificateUrl?: string;
+  bonafideCertificateUrl?: string; // For a downloadable button
+  uploadedPhotoUrl?: string;
+  uploadedSignatureUrl?: string;
+
+  // Internal/System fields (already present)
+  role?: string;
 }
 
 /**
@@ -35,7 +59,6 @@ export async function getStudentProfile(uid: string): Promise<StudentProfile | n
   if (!db) {
     console.error("Firestore DB instance is not available.");
     throw new Error("Database connection error.");
-    // return null; // Or throw an error depending on desired behavior
   }
 
   try {
@@ -45,22 +68,84 @@ export async function getStudentProfile(uid: string): Promise<StudentProfile | n
     if (userDocSnap.exists()) {
       const userData = userDocSnap.data();
       // Construct and return the profile object
+      // For new fields, provide default/mock values if not in Firestore yet
       return {
-        studentId: userData.studentId || uid, // Prefer specific ID, fallback to UID
+        studentId: userData.studentId || uid,
         name: userData.name || 'N/A',
-        major: userData.major || 'N/A',
-        email: userData.email, // Include email if stored
-        role: userData.role, // Include role if stored
-        // Add other fields from userData as needed
+        
+        // Personal Information
+        profilePhotoUrl: userData.profilePhotoUrl || 'https://placehold.co/150x150.png',
+        dateOfBirth: userData.dateOfBirth || 'N/A',
+        gender: userData.gender || 'N/A',
+        contactNumber: userData.contactNumber || 'N/A',
+        email: userData.email, // From existing userData or Firebase Auth user.email
+        permanentAddress: userData.permanentAddress || 'N/A',
+        currentAddress: userData.currentAddress || 'N/A',
+        bloodGroup: userData.bloodGroup || 'N/A',
+        emergencyContactName: userData.emergencyContactName || 'N/A',
+        emergencyContactNumber: userData.emergencyContactNumber || 'N/A',
+
+        // Academic Details
+        enrollmentNumber: userData.enrollmentNumber || userData.studentId || uid,
+        courseProgram: userData.major || userData.courseProgram || 'N/A', // Use existing 'major' as 'courseProgram'
+        department: userData.department || 'N/A',
+        currentYear: userData.currentYear || 0,
+        currentSemester: userData.currentSemester || 0,
+        academicAdvisorName: userData.academicAdvisorName || 'N/A',
+        sectionOrBatch: userData.sectionOrBatch || 'N/A',
+        admissionDate: userData.admissionDate || 'N/A',
+        modeOfAdmission: userData.modeOfAdmission || 'N/A',
+        
+        // Documents
+        idCardUrl: userData.idCardUrl || '#view-id-card', // Placeholder links
+        admissionLetterUrl: userData.admissionLetterUrl || '#view-admission-letter',
+        marksheet10thUrl: userData.marksheet10thUrl || '#view-marksheet-10th',
+        marksheet12thUrl: userData.marksheet12thUrl || '#view-marksheet-12th',
+        migrationCertificateUrl: userData.migrationCertificateUrl || '#view-migration-cert',
+        bonafideCertificateUrl: userData.bonafideCertificateUrl || '#download-bonafide', // For download button
+        uploadedPhotoUrl: userData.uploadedPhotoUrl || 'https://placehold.co/100x100.png',
+        uploadedSignatureUrl: userData.uploadedSignatureUrl || 'https://placehold.co/200x80.png',
+
+        role: userData.role,
       };
     } else {
       console.warn(`No profile document found for UID: ${uid}`);
-      return null; // Return null if the document doesn't exist
+      // Return a default structure if no document, so the page doesn't break
+      return {
+        studentId: uid,
+        name: 'User Data Not Found',
+        profilePhotoUrl: 'https://placehold.co/150x150.png',
+        dateOfBirth: 'N/A',
+        gender: 'N/A',
+        contactNumber: 'N/A',
+        email: 'N/A',
+        permanentAddress: 'N/A',
+        currentAddress: 'N/A',
+        bloodGroup: 'N/A',
+        emergencyContactName: 'N/A',
+        emergencyContactNumber: 'N/A',
+        enrollmentNumber: uid,
+        courseProgram: 'N/A',
+        department: 'N/A',
+        currentYear: 0,
+        currentSemester: 0,
+        academicAdvisorName: 'N/A',
+        sectionOrBatch: 'N/A',
+        admissionDate: 'N/A',
+        modeOfAdmission: 'N/A',
+        idCardUrl: '#',
+        admissionLetterUrl: '#',
+        marksheet10thUrl: '#',
+        marksheet12thUrl: '#',
+        migrationCertificateUrl: '#',
+        bonafideCertificateUrl: '#',
+        uploadedPhotoUrl: 'https://placehold.co/100x100.png',
+        uploadedSignatureUrl: 'https://placehold.co/200x80.png',
+        role: 'student',
+      };
     }
   } catch (error) {
     console.error("Error fetching student profile from Firestore:", error);
-    // Re-throw the error or return null/handle it as appropriate
-    throw error; // Re-throwing allows higher-level components to catch it
-    // return null;
+    throw error;
   }
 }
