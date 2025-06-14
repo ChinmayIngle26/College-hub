@@ -13,7 +13,7 @@ import {
   Vote,
   LogIn,
   LogOut,
-  ClipboardEdit, // Icon for Leave Application
+  // ClipboardEdit, // Icon for Leave Application (Removed)
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
@@ -30,7 +30,7 @@ const navigationItems = [
   { href: '/grades', label: 'Grades', icon: GraduationCap },
   { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
   { href: '/voting', label: 'Voting System', icon: Vote },
-  { href: '/leave-application', label: 'Leave Application', icon: ClipboardEdit },
+  // { href: '/leave-application', label: 'Leave Application', icon: ClipboardEdit }, // Removed
 ];
 
 function deleteCookie(name: string) {
@@ -86,7 +86,7 @@ export function Sidebar() {
             </div>
           </div>
           <nav className="space-y-2">
-            {navigationItems.map((_, i) => ( // Adjusted for new item
+            {navigationItems.map((_, i) => ( 
               <div key={i} className="h-10 bg-muted rounded-md animate-pulse"></div>
             ))}
           </nav>
