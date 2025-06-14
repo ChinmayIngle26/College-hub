@@ -11,24 +11,62 @@ import { Button } from '@/components/ui/button';
 import { UserPlus, Users, Settings, ShieldAlert, Edit, Trash2, CheckCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-
+import type { StudentProfile } from '@/services/profile'; // Import the comprehensive profile type
 
 // Define the specific admin email address
 const ADMIN_EMAIL = "admin@gmail.com";
 
-interface UserData {
-  id: string;
-  name?: string;
-  studentId?: string;
-  major?: string;
-  email?: string;
-  parentEmail?: string;
-  role?: string;
-  createdAt?: any;
+// UserData now mirrors StudentProfile, plus 'id' for Firestore document ID
+interface UserData extends StudentProfile {
+  id: string; // Firestore document ID (UID)
+  createdAt?: any; // Keep if you use it for sorting or display
 }
+
+const initialNewUserState: Omit<UserData, 'id' | 'createdAt'> = {
+  name: '',
+  studentId: '', // This is the student's ID, not Firestore doc ID
+  email: '',
+  parentEmail: '',
+  role: 'student',
+  profilePhotoUrl: '',
+  dateOfBirth: '',
+  gender: '',
+  contactNumber: '',
+  permanentAddress: '',
+  currentAddress: '',
+  bloodGroup: '',
+  emergencyContactName: '',
+  emergencyContactNumber: '',
+  enrollmentNumber: '',
+  courseProgram: '', // Replaces 'major'
+  department: '',
+  currentYear: 0,
+  currentSemester: 0,
+  academicAdvisorName: '',
+  sectionOrBatch: '',
+  admissionDate: '',
+  modeOfAdmission: '',
+  idCardUrl: '',
+  admissionLetterUrl: '',
+  marksheet10thUrl: '',
+  marksheet12thUrl: '',
+  migrationCertificateUrl: '',
+  bonafideCertificateUrl: '',
+  uploadedPhotoUrl: '',
+  uploadedSignatureUrl: '',
+  examRegistrationStatus: 'Not Registered',
+  admitCardUrl: '',
+  internalExamTimetableUrl: '',
+  externalExamTimetableUrl: '',
+  resultsAndGradeCardsUrl: '',
+  revaluationRequestStatus: 'None',
+  revaluationRequestLink: '',
+};
+
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -38,7 +76,7 @@ export default function AdminPage() {
   const [checkingRole, setCheckingRole] = useState(true);
   const [usersData, setUsersData] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' });
+  const [newUser, setNewUser] = useState<Omit<UserData, 'id' | 'createdAt'>>(initialNewUserState);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -142,40 +180,49 @@ export default function AdminPage() {
   }, [isAdmin, authLoading, checkingRole]);
 
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setNewUser(prev => ({ ...prev, [name]: value }));
+    const SPREADSHEET_FIELD_NAMES = ['currentYear', 'currentSemester']
+    setNewUser(prev => ({ ...prev, [name]: SPREADSHEET_FIELD_NAMES.includes(name) ? parseInt(value) : value }));
   };
 
-  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if (!editingUser) return;
     const { name, value } = e.target;
-    setEditingUser(prev => prev ? ({ ...prev, [name]: value }) : null);
+    const SPREADSHEET_FIELD_NAMES = ['currentYear', 'currentSemester']
+    setEditingUser(prev => prev ? ({ ...prev, [name]: SPREADSHEET_FIELD_NAMES.includes(name) ? parseInt(value) : value }) : null);
   };
 
-  const handleCreateUser = async () => {
-    if (!db || !isAdmin) return;
-
-    try {
-      if (!newUser.name || !newUser.studentId || !newUser.major || !newUser.email || !newUser.parentEmail || !newUser.role) {
+  const validateUserProfile = (profile: Omit<UserData, 'id' | 'createdAt' > | UserData): boolean => {
+    if (!profile.name || !profile.studentId || !profile.courseProgram || !profile.email || !profile.parentEmail || !profile.role) {
         toast({
           title: "Validation Error",
-          description: "Please fill in all fields to create a new user.",
+          description: "Please fill in all required fields (Name, Student ID, Course/Program, Email, Parent's Email, Role).",
           variant: "destructive",
         });
-        return;
+        return false;
       }
-      if (!/\S+@\S+\.\S+/.test(newUser.email) || !/\S+@\S+\.\S+/.test(newUser.parentEmail)) {
+      if (!/\S+@\S+\.\S+/.test(profile.email) || (profile.parentEmail && !/\S+@\S+\.\S+/.test(profile.parentEmail))) {
         toast({
           title: "Validation Error",
           description: "Please enter valid email addresses.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
+      return true;
+  };
+
+  const handleCreateUser = async () => {
+    if (!db || !isAdmin) return;
+    if (!validateUserProfile(newUser)) return;
+
+    try {
       const usersCollection = collection(db, 'users');
       await addDoc(usersCollection, {
         ...newUser,
+        currentYear: Number(newUser.currentYear) || 0,
+        currentSemester: Number(newUser.currentSemester) || 0,
         createdAt: serverTimestamp(),
       });
 
@@ -184,7 +231,7 @@ export default function AdminPage() {
         description: "User profile created successfully in Firestore.",
       });
       fetchUsers();
-      setNewUser({ name: '', studentId: '', major: '', email: '', parentEmail: '', role: 'student' });
+      setNewUser(initialNewUserState);
     } catch (error) {
       console.error("Error creating user profile:", error);
       toast({
@@ -202,28 +249,18 @@ export default function AdminPage() {
 
   const handleUpdateUser = async () => {
     if (!db || !isAdmin || !editingUser || !editingUser.id) return;
+    if (!validateUserProfile(editingUser)) return;
 
     try {
-      if (!editingUser.name || !editingUser.studentId || !editingUser.major || !editingUser.email || !editingUser.parentEmail || !editingUser.role) {
-        toast({
-          title: "Validation Error",
-          description: "Please fill in all fields.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!/\S+@\S+\.\S+/.test(editingUser.email) || (editingUser.parentEmail && !/\S+@\S+\.\S+/.test(editingUser.parentEmail))) {
-        toast({
-          title: "Validation Error",
-          description: "Please enter valid email addresses.",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const userDocRef = doc(db, 'users', editingUser.id);
-      const { id, ...userDataToUpdate } = editingUser;
-      await updateDoc(userDocRef, userDataToUpdate);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, createdAt, ...userDataToUpdate } = editingUser;
+      
+      await updateDoc(userDocRef, {
+        ...userDataToUpdate,
+        currentYear: Number(editingUser.currentYear) || 0,
+        currentSemester: Number(editingUser.currentSemester) || 0,
+      });
 
       toast({
         title: "Success",
@@ -297,6 +334,84 @@ export default function AdminPage() {
     );
   }
 
+  const renderProfileFormFields = (data: Omit<UserData, 'id' | 'createdAt'> | UserData, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void) => (
+    <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        {/* Personal Information */}
+        <div className="md:col-span-2 font-semibold text-lg mb-2 border-b pb-1">Personal Information</div>
+        <div><Label htmlFor="formName">Full Name*</Label><Input id="formName" name="name" value={data.name || ''} onChange={onChange} placeholder="John Doe" /></div>
+        <div><Label htmlFor="formStudentId">Student ID*</Label><Input id="formStudentId" name="studentId" value={data.studentId || ''} onChange={onChange} placeholder="S12345" /></div>
+        <div><Label htmlFor="formEmail">Email*</Label><Input id="formEmail" name="email" type="email" value={data.email || ''} onChange={onChange} placeholder="user@example.com" /></div>
+        <div><Label htmlFor="formParentEmail">Parent's Email*</Label><Input id="formParentEmail" name="parentEmail" type="email" value={data.parentEmail || ''} onChange={onChange} placeholder="parent@example.com" /></div>
+        <div><Label htmlFor="formProfilePhotoUrl">Profile Photo URL</Label><Input id="formProfilePhotoUrl" name="profilePhotoUrl" value={data.profilePhotoUrl || ''} onChange={onChange} placeholder="https://example.com/photo.jpg" /></div>
+        <div><Label htmlFor="formDateOfBirth">Date of Birth</Label><Input id="formDateOfBirth" name="dateOfBirth" type="date" value={data.dateOfBirth || ''} onChange={onChange} /></div>
+        <div>
+            <Label htmlFor="formGender">Gender</Label>
+            <select id="formGender" name="gender" value={data.gender || ''} onChange={onChange} className="input-class mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50">
+                <option value="">Select Gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+            </select>
+        </div>
+        <div><Label htmlFor="formContactNumber">Contact Number</Label><Input id="formContactNumber" name="contactNumber" value={data.contactNumber || ''} onChange={onChange} placeholder="+1234567890" /></div>
+        <div className="md:col-span-2"><Label htmlFor="formPermanentAddress">Permanent Address</Label><Textarea id="formPermanentAddress" name="permanentAddress" value={data.permanentAddress || ''} onChange={onChange} placeholder="123 Main St, City, Country" /></div>
+        <div className="md:col-span-2"><Label htmlFor="formCurrentAddress">Current Address</Label><Textarea id="formCurrentAddress" name="currentAddress" value={data.currentAddress || ''} onChange={onChange} placeholder="Apt 4B, Complex, City" /></div>
+        <div><Label htmlFor="formBloodGroup">Blood Group</Label><Input id="formBloodGroup" name="bloodGroup" value={data.bloodGroup || ''} onChange={onChange} placeholder="O+" /></div>
+        <div><Label htmlFor="formEmergencyContactName">Emergency Contact Name</Label><Input id="formEmergencyContactName" name="emergencyContactName" value={data.emergencyContactName || ''} onChange={onChange} placeholder="Jane Doe" /></div>
+        <div><Label htmlFor="formEmergencyContactNumber">Emergency Contact Number</Label><Input id="formEmergencyContactNumber" name="emergencyContactNumber" value={data.emergencyContactNumber || ''} onChange={onChange} placeholder="+0987654321" /></div>
+
+        {/* Academic Details */}
+        <div className="md:col-span-2 font-semibold text-lg mt-4 mb-2 border-b pb-1">Academic Details</div>
+        <div><Label htmlFor="formEnrollmentNumber">Enrollment Number</Label><Input id="formEnrollmentNumber" name="enrollmentNumber" value={data.enrollmentNumber || ''} onChange={onChange} placeholder="ENR123" /></div>
+        <div><Label htmlFor="formCourseProgram">Course / Program*</Label><Input id="formCourseProgram" name="courseProgram" value={data.courseProgram || ''} onChange={onChange} placeholder="B.Tech in Computer Science" /></div>
+        <div><Label htmlFor="formDepartment">Department</Label><Input id="formDepartment" name="department" value={data.department || ''} onChange={onChange} placeholder="Computer Engineering" /></div>
+        <div><Label htmlFor="formCurrentYear">Current Year</Label><Input id="formCurrentYear" name="currentYear" type="number" value={data.currentYear || 0} onChange={onChange} /></div>
+        <div><Label htmlFor="formCurrentSemester">Current Semester</Label><Input id="formCurrentSemester" name="currentSemester" type="number" value={data.currentSemester || 0} onChange={onChange} /></div>
+        <div><Label htmlFor="formAcademicAdvisorName">Academic Advisor</Label><Input id="formAcademicAdvisorName" name="academicAdvisorName" value={data.academicAdvisorName || ''} onChange={onChange} placeholder="Dr. Smith" /></div>
+        <div><Label htmlFor="formSectionOrBatch">Section / Batch</Label><Input id="formSectionOrBatch" name="sectionOrBatch" value={data.sectionOrBatch || ''} onChange={onChange} placeholder="A1" /></div>
+        <div><Label htmlFor="formAdmissionDate">Admission Date</Label><Input id="formAdmissionDate" name="admissionDate" type="date" value={data.admissionDate || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formModeOfAdmission">Mode of Admission</Label><Input id="formModeOfAdmission" name="modeOfAdmission" value={data.modeOfAdmission || ''} onChange={onChange} placeholder="CET" /></div>
+
+        {/* Documents */}
+        <div className="md:col-span-2 font-semibold text-lg mt-4 mb-2 border-b pb-1">Documents (URLs)</div>
+        <div><Label htmlFor="formIdCardUrl">ID Card URL</Label><Input id="formIdCardUrl" name="idCardUrl" value={data.idCardUrl || ''} onChange={onChange} placeholder="https://example.com/id.pdf" /></div>
+        <div><Label htmlFor="formAdmissionLetterUrl">Admission Letter URL</Label><Input id="formAdmissionLetterUrl" name="admissionLetterUrl" value={data.admissionLetterUrl || ''} onChange={onChange} placeholder="https://example.com/admission.pdf" /></div>
+        <div><Label htmlFor="formMarksheet10thUrl">10th Marksheet URL</Label><Input id="formMarksheet10thUrl" name="marksheet10thUrl" value={data.marksheet10thUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formMarksheet12thUrl">12th Marksheet URL</Label><Input id="formMarksheet12thUrl" name="marksheet12thUrl" value={data.marksheet12thUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formMigrationCertificateUrl">Migration Certificate URL</Label><Input id="formMigrationCertificateUrl" name="migrationCertificateUrl" value={data.migrationCertificateUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formBonafideCertificateUrl">Bonafide Certificate URL</Label><Input id="formBonafideCertificateUrl" name="bonafideCertificateUrl" value={data.bonafideCertificateUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formUploadedPhotoUrl">Uploaded Photo URL</Label><Input id="formUploadedPhotoUrl" name="uploadedPhotoUrl" value={data.uploadedPhotoUrl || ''} onChange={onChange} placeholder="https://example.com/uploaded-photo.jpg" /></div>
+        <div><Label htmlFor="formUploadedSignatureUrl">Uploaded Signature URL</Label><Input id="formUploadedSignatureUrl" name="uploadedSignatureUrl" value={data.uploadedSignatureUrl || ''} onChange={onChange} placeholder="https://example.com/signature.png" /></div>
+        
+        {/* Exam Details */}
+        <div className="md:col-span-2 font-semibold text-lg mt-4 mb-2 border-b pb-1">Exam Details</div>
+        <div>
+            <Label htmlFor="formExamRegistrationStatus">Exam Registration Status</Label>
+            <select id="formExamRegistrationStatus" name="examRegistrationStatus" value={data.examRegistrationStatus || 'Not Registered'} onChange={onChange} className="input-class mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50">
+                <option value="Not Registered">Not Registered</option><option value="Registered">Registered</option><option value="Pending">Pending</option>
+            </select>
+        </div>
+        <div><Label htmlFor="formAdmitCardUrl">Admit Card URL</Label><Input id="formAdmitCardUrl" name="admitCardUrl" value={data.admitCardUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formInternalExamTimetableUrl">Internal Exam Timetable URL</Label><Input id="formInternalExamTimetableUrl" name="internalExamTimetableUrl" value={data.internalExamTimetableUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formExternalExamTimetableUrl">External Exam Timetable URL</Label><Input id="formExternalExamTimetableUrl" name="externalExamTimetableUrl" value={data.externalExamTimetableUrl || ''} onChange={onChange} /></div>
+        <div><Label htmlFor="formResultsAndGradeCardsUrl">Results/Grade Cards URL</Label><Input id="formResultsAndGradeCardsUrl" name="resultsAndGradeCardsUrl" value={data.resultsAndGradeCardsUrl || ''} onChange={onChange} /></div>
+        <div>
+            <Label htmlFor="formRevaluationRequestStatus">Revaluation Request Status</Label>
+            <select id="formRevaluationRequestStatus" name="revaluationRequestStatus" value={data.revaluationRequestStatus || 'None'} onChange={onChange} className="input-class mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50">
+                <option value="None">None</option><option value="Requested">Requested</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option>
+            </select>
+        </div>
+        <div><Label htmlFor="formRevaluationRequestLink">Revaluation Request Link</Label><Input id="formRevaluationRequestLink" name="revaluationRequestLink" value={data.revaluationRequestLink || ''} onChange={onChange} /></div>
+        
+        {/* Role Setting */}
+        <div className="md:col-span-2 font-semibold text-lg mt-4 mb-2 border-b pb-1">System Role</div>
+        <div>
+            <Label htmlFor="formRole">Role*</Label>
+            <select id="formRole" name="role" value={data.role || 'student'} onChange={onChange} className="input-class mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50">
+                <option value="student">Student</option><option value="admin">Admin</option>
+            </select>
+        </div>
+    </div>
+  );
+
+
   return (
     <div className="space-y-6">
       <Card>
@@ -330,8 +445,7 @@ export default function AdminPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Student ID</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Email</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Parent's Email</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Major</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Course/Program</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Role</th>
                         <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">Actions</th>
                       </tr>
@@ -342,8 +456,7 @@ export default function AdminPage() {
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground">{u.name || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.studentId || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.email || 'N/A'}</td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.parentEmail || 'N/A'}</td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.major || 'N/A'}</td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.courseProgram || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">{u.role || 'N/A'}</td>
                           <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                             <Button variant="ghost" size="sm" onClick={() => openEditModal(u)} className="mr-2 text-primary hover:text-primary/80">
@@ -391,41 +504,7 @@ export default function AdminPage() {
                   <CardDescription>Create a new user profile in Firestore. Note: This does not create a Firebase Auth user.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="newUserName">Full Name</Label>
-                      <Input id="newUserName" name="name" value={newUser.name} onChange={handleInputChange} placeholder="John Doe" />
-                    </div>
-                    <div>
-                      <Label htmlFor="newUserStudentId">Student ID</Label>
-                      <Input id="newUserStudentId" name="studentId" value={newUser.studentId} onChange={handleInputChange} placeholder="S12345" />
-                    </div>
-                    <div>
-                      <Label htmlFor="newUserEmail">Email</Label>
-                      <Input id="newUserEmail" name="email" type="email" value={newUser.email} onChange={handleInputChange} placeholder="user@example.com" />
-                    </div>
-                    <div>
-                      <Label htmlFor="newUserParentEmail">Parent's Email</Label>
-                      <Input id="newUserParentEmail" name="parentEmail" type="email" value={newUser.parentEmail} onChange={handleInputChange} placeholder="parent@example.com" />
-                    </div>
-                    <div>
-                      <Label htmlFor="newUserMajor">Major</Label>
-                      <Input id="newUserMajor" name="major" value={newUser.major} onChange={handleInputChange} placeholder="Computer Science" />
-                    </div>
-                     <div>
-                        <Label htmlFor="newUserRole">Role</Label>
-                        <select
-                            id="newUserRole"
-                            name="role"
-                            value={newUser.role}
-                            onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
-                            className="mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-                        >
-                            <option value="student">Student</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                  </div>
+                    {renderProfileFormFields(newUser, handleInputChange)}
                 </CardContent>
                 <CardFooter>
                   <Button onClick={handleCreateUser} className="flex items-center gap-2">
@@ -440,45 +519,13 @@ export default function AdminPage() {
 
       {editingUser && (
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-3xl"> {/* Wider dialog for edit form */}
             <DialogHeader>
               <DialogTitle>Edit User: {editingUser.name}</DialogTitle>
               <DialogDescription>Modify the details for this user.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label htmlFor="editUserName">Full Name</Label>
-                <Input id="editUserName" name="name" value={editingUser.name || ''} onChange={handleEditInputChange} />
-              </div>
-              <div>
-                <Label htmlFor="editUserStudentId">Student ID</Label>
-                <Input id="editUserStudentId" name="studentId" value={editingUser.studentId || ''} onChange={handleEditInputChange} />
-              </div>
-              <div>
-                <Label htmlFor="editUserEmail">Email</Label>
-                <Input id="editUserEmail" name="email" type="email" value={editingUser.email || ''} onChange={handleEditInputChange} />
-              </div>
-              <div>
-                <Label htmlFor="editUserParentEmail">Parent's Email</Label>
-                <Input id="editUserParentEmail" name="parentEmail" type="email" value={editingUser.parentEmail || ''} onChange={handleEditInputChange} />
-              </div>
-              <div>
-                <Label htmlFor="editUserMajor">Major</Label>
-                <Input id="editUserMajor" name="major" value={editingUser.major || ''} onChange={handleEditInputChange} />
-              </div>
-               <div>
-                <Label htmlFor="editUserRole">Role</Label>
-                <select
-                    id="editUserRole"
-                    name="role"
-                    value={editingUser.role || 'student'}
-                    onChange={(e) => setEditingUser(prev => prev ? ({ ...prev, role: e.target.value }) : null)}
-                    className="mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-                >
-                    <option value="student">Student</option>
-                    <option value="admin">Admin</option>
-                </select>
-              </div>
+            <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2"> {/* Scrollable content */}
+                {renderProfileFormFields(editingUser, handleEditInputChange)}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setIsEditModalOpen(false); setEditingUser(null); }}>Cancel</Button>
@@ -515,3 +562,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
