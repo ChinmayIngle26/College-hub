@@ -5,17 +5,15 @@ import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAttendanceRecords } from '@/services/attendance';
-import { Suspense, useEffect, useState } from 'react'; // Add useEffect, useState
+import { getAttendanceRecords } from '@/services/attendance'; // This service is now updated
+import { useEffect, useState } from 'react'; 
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/context/auth-context'; // Import useAuth
-import type { AttendanceRecord } from '@/services/attendance';
-
-// No longer need a default STUDENT_ID, will use logged-in user's ID
-
+import { useAuth } from '@/context/auth-context'; 
+import type { AttendanceRecord } from '@/services/attendance'; // This type might need adjustment if structure changed
+import { format, parseISO } from 'date-fns';
 
 function AttendanceTableLoader() {
-    const { user, loading: authLoading } = useAuth(); // Get user and loading state
+    const { user, loading: authLoading } = useAuth(); 
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -27,9 +25,10 @@ function AttendanceTableLoader() {
                 setLoading(true);
                 setError(null);
                 try {
-                    const fetchedRecords = await getAttendanceRecords(user.uid); // Use user.uid
-                    const sortedRecords = fetchedRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                    setRecords(sortedRecords);
+                    // The getAttendanceRecords service should now fetch from 'lectureAttendance'
+                    const fetchedRecords = await getAttendanceRecords(user.uid); 
+                    // The service already sorts by date desc, submittedAt desc
+                    setRecords(fetchedRecords);
                 } catch (err) {
                     console.error("Failed to fetch attendance records:", err);
                     setError("Could not load attendance data.");
@@ -39,12 +38,10 @@ function AttendanceTableLoader() {
             };
             fetchRecords();
         } else if (!authLoading && !user) {
-             // Handle case where user is not logged in
              setLoading(false);
-             // Optionally set an error or specific state
              setError("Please sign in to view attendance.");
         }
-    }, [user, authLoading]); // Re-run if user or authLoading changes
+    }, [user, authLoading]); 
 
 
     if (loading || authLoading) {
@@ -67,17 +64,21 @@ function AttendanceTableLoader() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
+                <TableHead>Lecture/Subject</TableHead>
+                <TableHead>Classroom</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((record) => (
-                <TableRow key={record.date}>
-                  <TableCell>{new Date(record.date).toLocaleDateString()}</TableCell>
+              {records.map((record, index) => ( // Added index for key, ensure record.date + lectureName is unique if possible
+                <TableRow key={`${record.date}-${record.lectureName}-${index}`}>
+                  <TableCell>{format(parseISO(record.date), 'PP')}</TableCell> {/* Format date for display */}
+                  <TableCell>{record.lectureName || 'N/A'}</TableCell>
+                  <TableCell>{record.classroomName || 'N/A'}</TableCell>
                   <TableCell
                     className={cn(
                       'text-right font-medium',
-                      record.status === 'present' ? 'text-green-600' : 'text-red-600' // Keep explicit colors or switch to theme-based?
+                      record.status === 'present' ? 'text-green-600' : 'text-red-600' 
                     )}
                   >
                     {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
@@ -103,10 +104,7 @@ export default function AttendancePage() {
         <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
           Attendance
         </h2>
-        {/* Suspense boundary remains useful if AttendanceTableLoader itself had internal async ops */}
-        {/* but primary loading is now handled inside */}
         <AttendanceTableLoader />
-         {/* Optionally add filters for date range, courses etc. */}
       </div>
     </>
   );
