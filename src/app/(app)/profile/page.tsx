@@ -4,7 +4,7 @@
 import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Suspense, useEffect, useState } from 'react'; 
+import { useEffect, useState } from 'react'; 
 import { useAuth } from '@/context/auth-context'; 
 import { db } from '@/lib/firebase/client'; 
 import type { StudentProfile } from '@/services/profile'; 
@@ -29,7 +29,7 @@ function ProfileDetailsLoader() {
   const { toast } = useToast();
 
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const [requestFieldName, setRequestFieldName] = useState('');
+  const [requestFieldInfo, setRequestFieldInfo] = useState<{ key: keyof StudentProfile; label: string } | null>(null);
   const [requestOldValue, setRequestOldValue] = useState('');
   const [requestNewValue, setRequestNewValue] = useState('');
   
@@ -75,42 +75,41 @@ function ProfileDetailsLoader() {
 
   const handleSaveProfile = async () => {
     if (!profile || !user) return;
-    toast({ title: "Saving Profile (Placeholder)", description: "Profile save functionality will be implemented soon." });
+    toast({ title: "Saving Profile (Placeholder)", description: "Profile save functionality for non-critical fields will be implemented later." });
     // In a future step, this will save editableProfile to Firestore for non-critical fields
-    // For critical fields, it will trigger the request flow.
     // For now, just exit edit mode.
     setIsEditMode(false);
   };
   
   const openRequestModal = (fieldName: keyof StudentProfile, label: string) => {
     if (!profile) return;
-    setRequestFieldName(label); // Use label for display
-    setRequestOldValue(profile[fieldName] as string || 'N/A');
-    setRequestNewValue(profile[fieldName] as string || ''); // Pre-fill with current value or empty
+    setRequestFieldInfo({ key: fieldName, label });
+    setRequestOldValue(String(profile[fieldName] ?? 'N/A'));
+    setRequestNewValue(String(profile[fieldName] ?? '')); 
     setIsRequestModalOpen(true);
   };
 
   const handleSubmitChangeRequest = async () => {
-    if (!user || !profile ) return;
-    // Find the actual field key from the display label (this is a bit hacky, better to pass the key)
-    // For simplicity now, assuming requestFieldName is the actual key if we set it up carefully
-    // A better approach would be to store {key: 'email', label: 'Email Address'} when opening modal
+    if (!user || !profile || !requestFieldInfo) return;
 
-    // This is a simplified mapping. In a real scenario, ensure `requestFieldName` can be mapped back to a valid StudentProfile key.
-    // For this example, we'll assume 'Email Address' maps to 'email'.
-    const fieldKey = requestFieldName === 'Email Address' ? 'email' : requestFieldName.toLowerCase().replace(/\s+/g, '');
-
-
-    toast({ title: "Submitting Request...", description: `Requesting to change ${requestFieldName}.`});
+    toast({ title: "Submitting Request...", description: `Requesting to change ${requestFieldInfo.label}.`});
     try {
-        // This uses a placeholder service function.
-        await createProfileChangeRequest(user.uid, fieldKey, requestOldValue, requestNewValue);
-        toast({ title: "Request Submitted", description: `Your request to change ${requestFieldName} has been submitted for admin approval.` });
+        await createProfileChangeRequest(
+            user.uid,
+            profile.name,
+            profile.email,
+            requestFieldInfo.key, 
+            requestOldValue, 
+            requestNewValue
+        );
+        toast({ title: "Request Submitted", description: `Your request to change ${requestFieldInfo.label} has been submitted for admin approval.` });
     } catch (error) {
+        console.error("Error submitting change request:", error)
         toast({ title: "Submission Failed", description: "Could not submit your change request. Please try again.", variant: "destructive" });
     }
     setIsRequestModalOpen(false);
-    setRequestNewValue(''); // Clear for next request
+    setRequestNewValue(''); 
+    setRequestFieldInfo(null);
   };
 
 
@@ -236,7 +235,7 @@ function ProfileDetailsLoader() {
             <p className="text-sm text-muted-foreground">{profile.email}</p>
           </div>
           <div className="md:col-span-2 space-y-3">
-            <InfoItem label="Full Name" value={profile.name} fieldName="name" />
+            <InfoItem label="Full Name" value={profile.name} fieldName="name" onEditRequest={openRequestModal}/>
             <InfoItem label="Date of Birth" value={profile.dateOfBirth} fieldName="dateOfBirth" isEditable={true} />
             <InfoItem label="Gender" value={profile.gender} fieldName="gender" isEditable={true} />
             <InfoItem label="Contact Number" value={profile.contactNumber} fieldName="contactNumber" isEditable={true} />
@@ -259,15 +258,15 @@ function ProfileDetailsLoader() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-          <InfoItem label="Enrollment Number / Roll Number" value={profile.enrollmentNumber} fieldName="enrollmentNumber" />
-          <InfoItem label="Course / Program" value={profile.courseProgram} fieldName="courseProgram" />
-          <InfoItem label="Department" value={profile.department} fieldName="department" />
-          <InfoItem label="Current Year" value={profile.currentYear ? `Year ${profile.currentYear}` : 'N/A'} fieldName="currentYear" />
-          <InfoItem label="Current Semester" value={profile.currentSemester ? `Semester ${profile.currentSemester}` : 'N/A'} fieldName="currentSemester" />
-          <InfoItem label="Academic Advisor" value={profile.academicAdvisorName} fieldName="academicAdvisorName" />
-          <InfoItem label="Section / Batch" value={profile.sectionOrBatch} fieldName="sectionOrBatch" />
-          <InfoItem label="Admission Date" value={profile.admissionDate} fieldName="admissionDate" />
-          <InfoItem label="Mode of Admission" value={profile.modeOfAdmission} fieldName="modeOfAdmission" />
+          <InfoItem label="Enrollment Number / Roll Number" value={profile.enrollmentNumber} fieldName="enrollmentNumber" onEditRequest={openRequestModal}/>
+          <InfoItem label="Course / Program" value={profile.courseProgram} fieldName="courseProgram" onEditRequest={openRequestModal}/>
+          <InfoItem label="Department" value={profile.department} fieldName="department" onEditRequest={openRequestModal}/>
+          <InfoItem label="Current Year" value={profile.currentYear ? `Year ${profile.currentYear}` : 'N/A'} fieldName="currentYear" onEditRequest={openRequestModal} />
+          <InfoItem label="Current Semester" value={profile.currentSemester ? `Semester ${profile.currentSemester}` : 'N/A'} fieldName="currentSemester" onEditRequest={openRequestModal}/>
+          <InfoItem label="Academic Advisor" value={profile.academicAdvisorName} fieldName="academicAdvisorName" isEditable={true}/>
+          <InfoItem label="Section / Batch" value={profile.sectionOrBatch} fieldName="sectionOrBatch" isEditable={true}/>
+          <InfoItem label="Admission Date" value={profile.admissionDate} fieldName="admissionDate" onEditRequest={openRequestModal}/>
+          <InfoItem label="Mode of Admission" value={profile.modeOfAdmission} fieldName="modeOfAdmission" isEditable={true}/>
         </CardContent>
       </Card>
 
@@ -344,7 +343,7 @@ function ProfileDetailsLoader() {
             </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <InfoItem label="Exam Registration" value={profile.examRegistrationStatus} fieldName="examRegistrationStatus" />
+            <InfoItem label="Exam Registration" value={profile.examRegistrationStatus} fieldName="examRegistrationStatus" onEditRequest={openRequestModal}/>
             <DocumentOrActionItem label="Admit Card" url={profile.admitCardUrl} actionLabel="Download Admit Card" isDownloadable={true} icon={Download} fieldName="admitCardUrl" uploadable={true}/>
             <DocumentOrActionItem label="Internal Exam Timetable" url={profile.internalExamTimetableUrl} actionLabel="View Timetable" icon={Eye} fieldName="internalExamTimetableUrl" uploadable={true}/>
             <DocumentOrActionItem label="External Exam Timetable" url={profile.externalExamTimetableUrl} actionLabel="View Timetable" icon={Eye} fieldName="externalExamTimetableUrl" uploadable={true}/>
@@ -365,9 +364,9 @@ function ProfileDetailsLoader() {
       <Dialog open={isRequestModalOpen} onOpenChange={setIsRequestModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Request Change for {requestFieldName}</DialogTitle>
+            <DialogTitle>Request Change for {requestFieldInfo?.label}</DialogTitle>
             <DialogDescription>
-              Your request to change "{requestFieldName}" will be sent to an administrator for approval.
+              Your request to change "{requestFieldInfo?.label}" will be sent to an administrator for approval.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -386,12 +385,12 @@ function ProfileDetailsLoader() {
                 value={requestNewValue}
                 onChange={(e) => setRequestNewValue(e.target.value)}
                 className="col-span-3"
-                placeholder={`Enter new ${requestFieldName.toLowerCase()}`}
+                placeholder={`Enter new ${requestFieldInfo?.label.toLowerCase()}`}
               />
             </div>
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline" onClick={() => setRequestFieldInfo(null)}>Cancel</Button></DialogClose>
             <Button onClick={handleSubmitChangeRequest}>Submit Request</Button>
           </DialogFooter>
         </DialogContent>
@@ -410,11 +409,10 @@ export default function ProfilePage() {
           <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
             My Profile
           </h2>
-          {/* Placeholder for Edit Button, will be moved inside ProfileDetailsLoader */}
         </div>
         <Suspense fallback={
             <div className="space-y-6">
-                <Skeleton className="h-12 w-32 self-end" /> {/* Skeleton for edit button */}
+                <Skeleton className="h-12 w-32 self-end" /> 
                 <Skeleton className="h-64 w-full rounded-lg" />
                 <Skeleton className="h-72 w-full rounded-lg" />
                 <Skeleton className="h-80 w-full rounded-lg" />
@@ -427,3 +425,4 @@ export default function ProfilePage() {
     </>
   );
 }
+

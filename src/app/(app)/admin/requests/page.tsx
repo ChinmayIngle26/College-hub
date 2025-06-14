@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { db } from '@/lib/firebase/client';
 import { doc, getDoc } from 'firebase/firestore';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import type { StudentProfile } from '@/services/profile';
 
 const ADMIN_EMAIL = "admin@gmail.com";
 
@@ -39,7 +40,7 @@ export default function AdminRequestsPage() {
   const [checkingRole, setCheckingRole] = useState(true);
   const [requests, setRequests] = useState<ProfileChangeRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<ProfileChangeRequest | null>(null);
+  const [selectedRequestForDenial, setSelectedRequestForDenial] = useState<ProfileChangeRequest | null>(null);
   const [denialReason, setDenialReason] = useState('');
 
   useEffect(() => {
@@ -80,8 +81,9 @@ export default function AdminRequestsPage() {
     if (!isAdmin) return;
     setLoadingRequests(true);
     try {
-      const fetchedRequests = await getProfileChangeRequests(); // Using mock service for now
-      setRequests(fetchedRequests.sort((a,b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
+      const fetchedRequests = await getProfileChangeRequests();
+      // Firestore Timestamps are converted to Dates in the service now
+      setRequests(fetchedRequests); // Already sorted by service if orderBy is used
     } catch (error) {
       console.error("Error fetching requests:", error);
       toast({ title: "Error Fetching Requests", description: "Could not load change requests.", variant: "destructive" });
@@ -97,25 +99,33 @@ export default function AdminRequestsPage() {
   }, [isAdmin, authLoading, checkingRole]);
 
   const handleApprove = async (request: ProfileChangeRequest) => {
-    // Placeholder: In future, this will call the service to update Firestore
-    toast({ title: "Approving Request (Placeholder)", description: `Request ID: ${request.id} for ${request.fieldName} would be approved.` });
-    // await approveProfileChangeRequest(request.id, request.userId, request.fieldName, request.newValue);
-    // For UI update with mock data:
-    setRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: 'approved', resolvedAt: new Date(), adminNotes: 'Approved via UI' } : r));
+    try {
+      await approveProfileChangeRequest(request.id, request.userId, request.fieldName as keyof StudentProfile, request.newValue, `Approved by ${user?.email}`);
+      toast({ title: "Request Approved", description: `Request ID: ${request.id} for ${request.fieldName} has been approved.` });
+      fetchRequests(); // Refresh the list
+    } catch (error) {
+      console.error("Error approving request:", error);
+      toast({ title: "Approval Failed", description: "Could not approve the request.", variant: "destructive" });
+    }
   };
 
-  const handleDeny = async (request: ProfileChangeRequest) => {
-    // Placeholder: In future, this will call the service to update Firestore
+  const handleDeny = async () => {
+    if (!selectedRequestForDenial) return;
     if (!denialReason.trim()) {
         toast({ title: "Reason Required", description: "Please provide a reason for denial.", variant: "destructive" });
         return;
     }
-    toast({ title: "Denying Request (Placeholder)", description: `Request ID: ${request.id} for ${request.fieldName} would be denied. Reason: ${denialReason}` });
-    // await denyProfileChangeRequest(request.id, denialReason);
-    // For UI update with mock data:
-    setRequests(prev => prev.map(r => r.id === request.id ? { ...r, status: 'denied', resolvedAt: new Date(), adminNotes: denialReason } : r));
-    setSelectedRequest(null);
-    setDenialReason('');
+    try {
+      await denyProfileChangeRequest(selectedRequestForDenial.id, denialReason);
+      toast({ title: "Request Denied", description: `Request ID: ${selectedRequestForDenial.id} for ${selectedRequestForDenial.fieldName} has been denied.` });
+      fetchRequests(); // Refresh the list
+    } catch (error) {
+      console.error("Error denying request:", error);
+      toast({ title: "Denial Failed", description: "Could not deny the request.", variant: "destructive" });
+    } finally {
+      setSelectedRequestForDenial(null);
+      setDenialReason('');
+    }
   };
 
   if (authLoading || checkingRole) {
@@ -137,13 +147,13 @@ export default function AdminRequestsPage() {
   }
 
   const renderValue = (value: any) => {
-    if (typeof value === 'string' && (value.startsWith('http') || value.startsWith('data:'))) {
+    if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:'))) {
       return <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-xs inline-block">{value}</a>;
     }
     if (value instanceof Date) {
         return format(value, 'PPP p');
     }
-    return String(value);
+    return String(value === undefined || value === null ? 'N/A' : value);
   };
 
   return (
@@ -188,26 +198,26 @@ export default function AdminRequestsPage() {
                     <TableCell className="font-medium">{req.fieldName}</TableCell>
                     <TableCell>{renderValue(req.oldValue)}</TableCell>
                     <TableCell>{renderValue(req.newValue)}</TableCell>
-                    <TableCell>{format(new Date(req.requestedAt), 'PP')}</TableCell>
+                    <TableCell>{req.requestedAt instanceof Date ? format(req.requestedAt, 'PP p') : 'Invalid Date'}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="ghost" size="sm" onClick={() => handleApprove(req)} className="text-green-600 hover:text-green-700">
                         <CheckCircle className="h-4 w-4 mr-1" /> Approve
                       </Button>
-                       <Dialog open={selectedRequest?.id === req.id && selectedRequest?.status === 'pending'} onOpenChange={(isOpen) => {
-                            if (!isOpen) setSelectedRequest(null);
-                            else setSelectedRequest(req);
+                       <Dialog open={selectedRequestForDenial?.id === req.id} onOpenChange={(isOpen) => {
+                            if (!isOpen) setSelectedRequestForDenial(null);
+                            // else setSelectedRequestForDenial(req); // DialogTrigger handles opening
                         }}>
                         <DialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setSelectedRequest(req)}>
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setSelectedRequestForDenial(req)}>
                             <XCircle className="h-4 w-4 mr-1" /> Deny
                           </Button>
                         </DialogTrigger>
-                        {selectedRequest && selectedRequest.id === req.id && (
+                        {selectedRequestForDenial && selectedRequestForDenial.id === req.id && (
                         <DialogContent>
                           <DialogHeader>
                             <DialogTitle>Deny Change Request</DialogTitle>
                             <DialogDescription>
-                              Provide a reason for denying the request from {selectedRequest.userName} to change their {selectedRequest.fieldName}.
+                              Provide a reason for denying the request from {selectedRequestForDenial.userName} to change their {selectedRequestForDenial.fieldName}.
                             </DialogDescription>
                           </DialogHeader>
                           <div className="py-4">
@@ -220,8 +230,8 @@ export default function AdminRequestsPage() {
                             />
                           </div>
                           <DialogFooter>
-                            <DialogClose asChild><Button variant="outline" onClick={() => { setSelectedRequest(null); setDenialReason(''); }}>Cancel</Button></DialogClose>
-                            <Button variant="destructive" onClick={() => handleDeny(selectedRequest)}>Confirm Denial</Button>
+                            <DialogClose asChild><Button variant="outline" onClick={() => { setSelectedRequestForDenial(null); setDenialReason(''); }}>Cancel</Button></DialogClose>
+                            <Button variant="destructive" onClick={handleDeny}>Confirm Denial</Button>
                           </DialogFooter>
                         </DialogContent>
                         )}
@@ -272,7 +282,7 @@ export default function AdminRequestsPage() {
                         {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
                       </Badge>
                     </TableCell>
-                    <TableCell>{req.resolvedAt ? format(new Date(req.resolvedAt), 'PP') : 'N/A'}</TableCell>
+                    <TableCell>{req.resolvedAt ? (req.resolvedAt instanceof Date ? format(req.resolvedAt, 'PP p') : 'Invalid Date') : 'N/A'}</TableCell>
                     <TableCell className="max-w-xs truncate">{req.adminNotes || 'N/A'}</TableCell>
                   </TableRow>
                 ))}
@@ -286,3 +296,4 @@ export default function AdminRequestsPage() {
     </div>
   );
 }
+
