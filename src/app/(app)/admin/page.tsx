@@ -15,23 +15,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import type { StudentProfile } from '@/services/profile'; // Import the comprehensive profile type
+import type { StudentProfile } from '@/services/profile'; 
 
-// Define the specific admin email address
 const ADMIN_EMAIL = "admin@gmail.com";
 
-// UserData now mirrors StudentProfile, plus 'id' for Firestore document ID
 interface UserData extends StudentProfile {
-  id: string; // Firestore document ID (UID)
-  createdAt?: any; // Keep if you use it for sorting or display
+  id: string; 
+  createdAt?: any; 
 }
 
 const initialNewUserState: Omit<UserData, 'id' | 'createdAt'> = {
   name: '',
-  studentId: '', // This is the student's ID, not Firestore doc ID
+  studentId: '', 
   email: '',
   parentEmail: '',
-  role: 'student',
+  role: 'student', 
   profilePhotoUrl: '',
   dateOfBirth: '',
   gender: '',
@@ -42,7 +40,7 @@ const initialNewUserState: Omit<UserData, 'id' | 'createdAt'> = {
   emergencyContactName: '',
   emergencyContactNumber: '',
   enrollmentNumber: '',
-  courseProgram: '', // Replaces 'major'
+  courseProgram: '', 
   department: '',
   currentYear: 0,
   currentSemester: 0,
@@ -147,7 +145,7 @@ export default function AdminPage() {
   const fetchUsers = async () => {
     if (!db || !isAdmin) {
         if (!isAdmin && !checkingRole) {
-             console.log("User is not admin, skipping fetchUsers.");
+             // console.log("User is not admin, skipping fetchUsers.");
         }
         if (!db) {
             console.error("Firestore DB instance is not available in fetchUsers.");
@@ -405,7 +403,9 @@ export default function AdminPage() {
         <div>
             <Label htmlFor="formRole">Role*</Label>
             <select id="formRole" name="role" value={data.role || 'student'} onChange={onChange} className="input-class mt-1 block w-full rounded-md border-input bg-background p-2 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50">
-                <option value="student">Student</option><option value="admin">Admin</option>
+                <option value="student">Student</option>
+                <option value="faculty">Faculty</option>
+                <option value="admin">Admin</option>
             </select>
         </div>
     </div>
@@ -519,12 +519,12 @@ export default function AdminPage() {
 
       {editingUser && (
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-3xl"> {/* Wider dialog for edit form */}
+          <DialogContent className="max-w-3xl"> 
             <DialogHeader>
               <DialogTitle>Edit User: {editingUser.name}</DialogTitle>
               <DialogDescription>Modify the details for this user.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2"> {/* Scrollable content */}
+            <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2"> 
                 {renderProfileFormFields(editingUser, handleEditInputChange)}
             </div>
             <DialogFooter>
@@ -562,5 +562,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    

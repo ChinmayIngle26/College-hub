@@ -56,7 +56,6 @@ export default function SignInPage() {
   const onSubmit = async (data: SignInFormValues) => {
     setLoading(true);
 
-    // Check if Firebase Auth was initialized correctly
     if (!auth || !db) {
         toast({
             title: 'Initialization Error',
@@ -64,38 +63,37 @@ export default function SignInPage() {
             variant: 'destructive',
         });
         setLoading(false);
-        return; // Stop the submission
+        return; 
     }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // --- Set auth cookie on successful sign-in ---
       const idToken = await user.getIdToken();
-      setCookie('firebaseAuthToken', idToken, 1); // Set cookie (e.g., expires in 1 day)
+      setCookie('firebaseAuthToken', idToken, 1); 
 
-      // Check if the user is an admin
-      let isAdmin = false;
+      let userRole = 'student'; // Default role
       const ADMIN_EMAIL = "admin@gmail.com";
 
       if (user.email === ADMIN_EMAIL) {
-        isAdmin = true;
+        userRole = 'admin';
       } else {
-        // Check Firestore for admin role
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
 
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            if (userData.role === 'admin') {
-              isAdmin = true;
-            }
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          if (userData.role === 'admin') {
+            userRole = 'admin';
+          } else if (userData.role === 'faculty') {
+            userRole = 'faculty';
           }
-        } catch (error) {
-          console.error("Error fetching user role:", error);
-          // Handle the error as needed
+          // If role is 'student' or undefined, it remains 'student'
+        } else {
+          // If no user document, they might be a new user who hasn't completed profile setup
+          // or an issue with data sync. Default to student role.
+          console.warn(`User document not found for UID: ${user.uid} during sign-in. Defaulting to student role for redirection.`);
         }
       }
 
@@ -104,14 +102,15 @@ export default function SignInPage() {
         description: 'Welcome back!',
       });
 
-      if (isAdmin) {
-        router.push('/admin'); // Redirect to admin panel
+      if (userRole === 'admin') {
+        router.push('/admin');
+      } else if (userRole === 'faculty') {
+        router.push('/faculty');
       } else {
-        router.push('/'); // Redirect to dashboard on successful sign-in
+        router.push('/'); 
       }
     } catch (error: any) {
       console.error('Sign in error:', error);
-      // Provide more specific error messages
       let description = 'An unexpected error occurred. Please try again.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         description = 'Invalid email or password.';
@@ -184,4 +183,3 @@ export default function SignInPage() {
     </div>
   );
 }
-
