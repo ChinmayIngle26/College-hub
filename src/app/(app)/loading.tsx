@@ -1,33 +1,19 @@
 
-import { Skeleton } from "@/components/ui/skeleton";
-import { MainHeader } from "@/components/layout/main-header"; // Import MainHeader
+import { MainHeader } from "@/components/layout/main-header";
+import { Loader2 } from "lucide-react";
 
 export default function Loading() {
-  // Simulate the layout of the dashboard page while loading
   return (
-    <>
+    // This component will be rendered within the <main> tag of (app)/layout.tsx during route transitions.
+    // It aims to fill the content area provided by the layout.
+    <div className="flex h-full flex-col"> {/* Occupy full height of its container from layout.tsx */}
       <MainHeader />
-      <div className="space-y-6 p-6 md:p-8 lg:p-10"> {/* Added padding */}
-          <Skeleton className="h-8 w-48" /> {/* Welcome message skeleton */}
-          {/* Summary Cards Skeletons */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-32 w-full" />
-          </div>
-          {/* Main Content Grid Skeletons */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <div className="space-y-6 lg:col-span-2">
-                  <Skeleton className="h-72 w-full" />
-                  <Skeleton className="h-72 w-full" />
-              </div>
-              <div className="lg:col-span-1">
-                  {/* Use approximate height of AnnouncementsCard */}
-                  <Skeleton className="h-[590px] w-full" />
-              </div>
-          </div>
+      <div className="flex flex-1 items-center justify-center p-6"> {/* flex-1 to grow and center content */}
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="mt-4 text-lg text-muted-foreground">Loading page...</p>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

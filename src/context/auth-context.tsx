@@ -5,7 +5,7 @@ import type { User } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react'; // Import Loader2
 
 interface AuthContextType {
   user: User | null;
@@ -33,11 +33,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Avoid rendering children until auth state is determined
   if (loading) {
-      // Basic full-page loading state
+      // Updated full-page loading state
       return (
-          <div className="flex h-screen items-center justify-center">
-              <Skeleton className="h-12 w-12 rounded-full" />
-              <span className="ml-4">Loading...</span>
+          <div className="flex h-screen flex-col items-center justify-center bg-background text-foreground">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <span className="mt-3 text-lg">Loading application...</span>
           </div>
       );
   }
