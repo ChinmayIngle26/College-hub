@@ -4,7 +4,7 @@
 import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useEffect, useState } from 'react'; 
+import { useEffect, useState, Suspense } from 'react'; 
 import { useAuth } from '@/context/auth-context'; 
 import { db } from '@/lib/firebase/client'; 
 import type { StudentProfile } from '@/services/profile'; 
@@ -96,8 +96,8 @@ function ProfileDetailsLoader() {
     try {
         await createProfileChangeRequest(
             user.uid,
-            profile.name,
-            profile.email,
+            profile.name, // Pass current profile name
+            profile.email, // Pass current profile email
             requestFieldInfo.key, 
             requestOldValue, 
             requestNewValue
@@ -425,4 +425,3 @@ export default function ProfilePage() {
     </>
   );
 }
-
