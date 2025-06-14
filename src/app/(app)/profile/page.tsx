@@ -146,13 +146,13 @@ function ProfileDetailsLoader() {
         />
       ) : isEditMode && onEditRequest ? (
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-foreground">{value || 'N/A'}</span>
-          <Button variant="outline" size="sm" onClick={() => onEditRequest(fieldName, label)}>
+          <span className="text-foreground break-all">{value || 'N/A'}</span>
+          <Button variant="outline" size="sm" onClick={() => onEditRequest(fieldName, label)} className="whitespace-nowrap">
             <Send className="mr-2 h-3 w-3" /> Request Change
           </Button>
         </div>
       ) : (
-        <span className="ml-2 text-foreground">{value || 'N/A'}</span>
+        <span className="ml-2 text-foreground break-all">{value || 'N/A'}</span>
       )}
     </div>
   );
@@ -160,25 +160,25 @@ function ProfileDetailsLoader() {
   const DocumentOrActionItem = ({ label, url, fieldName, actionLabel, icon, isDownloadable = false, actionType = 'link', uploadable = false }: { label: string; url?: string; fieldName?: keyof StudentProfile; actionLabel?: string; icon?: React.ElementType, isDownloadable?: boolean, actionType?: 'link' | 'button', uploadable?: boolean }) => {
     const IconComponent = icon;
     return (
-        <div className="mb-3 flex items-center justify-between rounded-md border p-3">
+        <div className="mb-3 flex flex-col items-start gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center">
             {IconComponent && <IconComponent className="mr-2 h-4 w-4 text-muted-foreground" />}
             <span className="text-sm font-medium text-foreground">{label}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             {isEditMode && uploadable && (
-                <Button variant="outline" size="sm" onClick={() => toast({title: "Upload (Placeholder)", description: `Upload for ${label} not implemented yet.`})}>
+                <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => toast({title: "Upload (Placeholder)", description: `Upload for ${label} not implemented yet.`})}>
                     <UploadCloud className="mr-2 h-4 w-4" /> Upload New
                 </Button>
             )}
             {url && url !== '#' ? (
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" size="sm" asChild className="w-full sm:w-auto">
                 <a href={url} download={isDownloadable} target="_blank" rel="noopener noreferrer">
                     {isDownloadable ? <Download className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />} {actionLabel || (isDownloadable ? 'Download' : 'View')}
                 </a>
                 </Button>
             ) : actionType === 'button' && actionLabel ? (
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto">
                 {IconComponent && <IconComponent className="mr-2 h-4 w-4" />} {actionLabel}
                 </Button>
             ): (
@@ -232,7 +232,7 @@ function ProfileDetailsLoader() {
                 </Button>
             )}
             <h3 className="text-lg font-semibold text-foreground">{profile.name}</h3>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            <p className="text-sm text-muted-foreground break-all">{profile.email}</p>
           </div>
           <div className="md:col-span-2 space-y-3">
             <InfoItem label="Full Name" value={profile.name} fieldName="name" onEditRequest={openRequestModal}/>
@@ -370,14 +370,14 @@ function ProfileDetailsLoader() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="currentValue" className="text-right col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="currentValue" className="text-left sm:text-right col-span-1">
                 Current Value
               </Label>
               <Input id="currentValue" value={requestOldValue} readOnly className="col-span-3 bg-muted" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="newValue" className="text-right col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
+              <Label htmlFor="newValue" className="text-left sm:text-right col-span-1">
                 New Value
               </Label>
               <Input

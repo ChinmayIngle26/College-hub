@@ -1,3 +1,4 @@
+
 'use client'; // Need client component for hooks
 
 import { getStudentProfile } from '@/services/profile';
@@ -70,12 +71,14 @@ export default function DashboardPage() {
              profileData = {
                name: userData.name || 'N/A', // Provide defaults
                studentId: userData.studentId || user.uid, // Use uid as fallback studentId
-               major: userData.major || 'N/A',
-             };
+               // major: userData.major || 'N/A', // 'major' is part of StudentProfile, handled by getStudentProfile
+               // Keep this minimal, getStudentProfile will map all fields
+               ...userData, // Spread existing data
+             } as StudentProfile; // Cast to ensure type alignment
            } else {
                console.warn(`User document not found for UID: ${user.uid}`);
                // Set a default/fallback profile or handle as error
-               profileData = { name: 'User', studentId: user.uid, major: 'Unknown' };
+               profileData = { name: 'User', studentId: user.uid, courseProgram: 'Unknown' } as StudentProfile;
            }
 
 
