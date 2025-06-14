@@ -1,11 +1,13 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
 import { useAuth } from '@/context/auth-context';
 import { useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/admin-layout';
-import { useRouter } from 'next/navigation'; // Import for potential redirect, though middleware handles most
-import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { useRouter } from 'next/navigation';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 export default function AppLayout({
   children,
@@ -15,6 +17,16 @@ export default function AppLayout({
   const { user, loading } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedCollapsedState = localStorage.getItem('sidebar-collapsed');
+      if (storedCollapsedState) {
+        setIsSidebarCollapsed(JSON.parse(storedCollapsedState));
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading) {
@@ -26,26 +38,41 @@ export default function AppLayout({
     }
   }, [user, loading]);
 
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prevState => {
+      const newState = !prevState;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sidebar-collapsed', JSON.stringify(newState));
+      }
+      return newState;
+    });
+  };
+
   if (loading) {
     // More detailed skeleton matching the app layout with sidebar
     return (
       <div className="flex h-screen">
-        <aside className="w-64 bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border">
+        <aside className={cn(
+            "bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out",
+            isSidebarCollapsed ? "w-20" : "w-64"
+          )}>
            <div>
              <div className="flex items-center space-x-3 mb-10">
                 <Skeleton className="h-10 w-10 rounded-md" />
-                <div>
-                  <Skeleton className="h-4 w-20 mb-1" />
-                  <Skeleton className="h-3 w-28" />
-                </div>
+                {!isSidebarCollapsed && (
+                  <div>
+                    <Skeleton className="h-4 w-20 mb-1" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                )}
              </div>
              <nav className="space-y-2">
                 {[...Array(6)].map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full rounded-md" />
+                  <Skeleton key={i} className={cn("h-10 w-full rounded-md", isSidebarCollapsed && "w-10 mx-auto")} />
                 ))}
              </nav>
            </div>
-           <Skeleton className="h-10 w-full rounded-md" />
+           <Skeleton className={cn("h-10 w-full rounded-md", isSidebarCollapsed && "w-10 mx-auto")} />
         </aside>
         <main className="flex-1 p-6 overflow-auto">
            {/* Main content loading skeleton */}
@@ -69,12 +96,7 @@ export default function AppLayout({
     );
   }
 
-  // If user is not logged in and not loading, middleware should have redirected.
-  // This is a fallback or for cases where auth context resolves to null after loading.
   if (!user && !loading) {
-    // This state ideally shouldn't be hit often due to middleware.
-    // You might want a redirect here if middleware fails or for edge cases.
-    // router.push('/signin'); // Could cause hydration issues if not handled carefully.
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Redirecting to sign in...</p>
@@ -84,15 +106,15 @@ export default function AppLayout({
 
 
   if (isAdmin) {
+    // AdminLayout now manages its own collapse state
     return <AdminLayout>{children}</AdminLayout>;
   }
 
   return (
     <div className="flex h-screen bg-background">
-      <Sidebar />
+      <Sidebar isCollapsed={isSidebarCollapsed} toggleCollapse={toggleSidebarCollapse} />
       <main className="flex-1 overflow-auto">
-        {/* The MainHeader component will be part of children pages that require it */}
-        <div className="p-6"> {/* Add padding around the content of each page */}
+        <div className="p-6">
             {children}
         </div>
       </main>

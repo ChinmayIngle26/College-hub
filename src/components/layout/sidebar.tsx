@@ -13,7 +13,8 @@ import {
   Vote,
   LogIn,
   LogOut,
-  // ClipboardEdit, // Icon for Leave Application (Removed)
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
@@ -22,6 +23,13 @@ import { signOut } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from './theme-toggle';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+
 
 const navigationItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -30,7 +38,6 @@ const navigationItems = [
   { href: '/grades', label: 'Grades', icon: GraduationCap },
   { href: '/appointments', label: 'Appointments', icon: CalendarCheck },
   { href: '/voting', label: 'Voting System', icon: Vote },
-  // { href: '/leave-application', label: 'Leave Application', icon: ClipboardEdit }, // Removed
 ];
 
 function deleteCookie(name: string) {
@@ -39,7 +46,12 @@ function deleteCookie(name: string) {
   }
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  isCollapsed: boolean;
+  toggleCollapse: () => void;
+}
+
+export function Sidebar({ isCollapsed, toggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -74,89 +86,150 @@ export function Sidebar() {
     }
   };
 
-  if (loading) {
+  // Skeleton for loading state can be managed by the parent AppLayout
+  if (loading && isCollapsed === undefined) { // only show skeleton if collapse state is not yet determined
     return (
-      <aside className="w-64 bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border">
+      <aside className={cn(
+        "bg-sidebar-background h-full p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out",
+        isCollapsed ? "w-20" : "w-64"
+      )}>
         <div>
-          <div className="flex items-center space-x-3 mb-10">
+          <div className={cn("flex items-center mb-10", isCollapsed ? "justify-center" : "space-x-3")}>
             <div className="w-10 h-10 bg-muted rounded-md animate-pulse"></div>
-            <div>
-              <div className="h-4 w-24 bg-muted rounded animate-pulse mb-1"></div>
-              <div className="h-3 w-32 bg-muted rounded animate-pulse"></div>
-            </div>
+            {!isCollapsed && (
+              <div>
+                <div className="h-4 w-24 bg-muted rounded animate-pulse mb-1"></div>
+                <div className="h-3 w-32 bg-muted rounded animate-pulse"></div>
+              </div>
+            )}
           </div>
           <nav className="space-y-2">
-            {navigationItems.map((_, i) => ( 
-              <div key={i} className="h-10 bg-muted rounded-md animate-pulse"></div>
+            {navigationItems.map((_, i) => (
+              <div key={i} className={cn("h-10 bg-muted rounded-md animate-pulse", isCollapsed ? "w-10 mx-auto" : "w-full")}></div>
             ))}
           </nav>
         </div>
-        <div className="h-10 bg-muted rounded-md animate-pulse"></div>
+        <div className={cn("h-10 bg-muted rounded-md animate-pulse", isCollapsed ? "w-10 mx-auto" : "w-full")}></div>
       </aside>
     );
   }
 
   return (
-    <aside className="w-64 bg-sidebar-background h-screen p-6 flex flex-col justify-between shadow-lg border-r border-sidebar-border">
+    <TooltipProvider delayDuration={0}>
+    <aside className={cn(
+      "bg-sidebar-background h-screen p-4 flex flex-col justify-between shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out",
+      isCollapsed ? "w-20 items-center" : "w-64"
+    )}>
       <div>
-        <div className="flex items-center space-x-3 mb-10">
+        <div className={cn("flex items-center mb-10", isCollapsed ? "justify-center pt-2" : "space-x-3")}>
           <Image
             src="/placeholder-logo.svg"
             alt="AISSMS Logo"
-            width={40}
-            height={40}
-            className="h-10 w-10"
+            width={isCollapsed ? 32 : 40}
+            height={isCollapsed ? 32 : 40}
+            className={cn(isCollapsed ? "h-8 w-8" : "h-10 w-10")}
             data-ai-hint="college crest logo"
           />
-          <div>
-            <h1 className="text-sm font-semibold text-sidebar-foreground">AISSMS</h1>
-            <p className="text-xs text-sidebar-foreground/80">College of Engineering</p>
-          </div>
+          {!isCollapsed && (
+            <div>
+              <h1 className="text-sm font-semibold text-sidebar-foreground">AISSMS</h1>
+              <p className="text-xs text-sidebar-foreground/80">College of Engg.</p>
+            </div>
+          )}
         </div>
         <nav className="space-y-2">
           {navigationItems.map((item) => {
             const isActive = pathname === item.href;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+              <Tooltip key={item.href}>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      'flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      isCollapsed ? "justify-center" : "",
+                      isActive
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    )}
+                  >
+                    <item.icon className={cn('w-5 h-5 shrink-0', isActive ? 'text-sidebar-accent-foreground' : 'text-sidebar-primary')} />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </Link>
+                </TooltipTrigger>
+                {isCollapsed && (
+                  <TooltipContent side="right" className="bg-background text-foreground border-border">
+                    <p>{item.label}</p>
+                  </TooltipContent>
                 )}
-              >
-                <item.icon className={cn('w-5 h-5', isActive ? 'text-sidebar-accent-foreground' : 'text-sidebar-primary')} />
-                <span>{item.label}</span>
-              </Link>
+              </Tooltip>
             );
           })}
         </nav>
       </div>
 
-      <div className="mt-auto space-y-2">
-        <ThemeToggle />
+      <div className="mt-auto space-y-2 flex flex-col items-center">
+        <div className={cn(isCollapsed ? "w-full flex justify-center" : "")}>
+            <ThemeToggle />
+        </div>
+        
         {user ? (
-          <Button
-            variant="ghost"
-            onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium justify-start text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-          >
-            <LogOut className="w-5 h-5 text-sidebar-primary" />
-            <span>Logout</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                onClick={handleLogout}
+                className={cn(
+                    "w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium justify-start text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                    isCollapsed ? "justify-center" : ""
+                )}
+              >
+                <LogOut className="w-5 h-5 text-sidebar-primary shrink-0" />
+                {!isCollapsed && <span>Logout</span>}
+              </Button>
+            </TooltipTrigger>
+            {isCollapsed && (
+              <TooltipContent side="right" className="bg-background text-foreground border-border">
+                <p>Logout</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         ) : (
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/signin')}
-            className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium justify-start text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-          >
-            <LogIn className="w-5 h-5 text-sidebar-primary" />
-            <span>Sign In</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                onClick={() => router.push('/signin')}
+                className={cn(
+                    "w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium justify-start text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                    isCollapsed ? "justify-center" : ""
+                )}
+              >
+                <LogIn className="w-5 h-5 text-sidebar-primary shrink-0" />
+                {!isCollapsed && <span>Sign In</span>}
+              </Button>
+            </TooltipTrigger>
+            {isCollapsed && (
+              <TooltipContent side="right" className="bg-background text-foreground border-border">
+                <p>Sign In</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         )}
+        <Button
+          variant="ghost"
+          onClick={toggleCollapse}
+          className={cn(
+            "w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium justify-start text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+            isCollapsed ? "justify-center" : ""
+          )}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {isCollapsed ? <ChevronsRight className="w-5 h-5 text-sidebar-primary shrink-0" /> : <ChevronsLeft className="w-5 h-5 text-sidebar-primary shrink-0" />}
+          {!isCollapsed && <span>Collapse</span>}
+        </Button>
       </div>
     </aside>
+    </TooltipProvider>
   );
 }
