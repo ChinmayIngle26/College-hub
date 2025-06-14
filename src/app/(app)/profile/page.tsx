@@ -11,7 +11,7 @@ import type { StudentProfile } from '@/services/profile';
 import { getStudentProfile } from '@/services/profile'; // Import the updated service
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Download, Eye, UserSquare, BookOpen, FileText, FileImage } from 'lucide-react';
+import { Download, Eye, UserSquare, BookOpen, FileText, FileImage, ClipboardList, Edit3 } from 'lucide-react';
 
 function ProfileDetailsLoader() {
   const { user, loading: authLoading } = useAuth(); 
@@ -53,6 +53,7 @@ function ProfileDetailsLoader() {
             <Skeleton className="h-64 w-full rounded-lg" />
             <Skeleton className="h-72 w-full rounded-lg" />
             <Skeleton className="h-80 w-full rounded-lg" />
+            <Skeleton className="h-72 w-full rounded-lg" /> 
         </div>
      );
   }
@@ -72,28 +73,30 @@ function ProfileDetailsLoader() {
     </div>
   );
 
-  const DocumentItem = ({ label, url, isDownloadable = false }: { label: string; url?: string; isDownloadable?: boolean }) => (
-    <div className="mb-3 flex items-center justify-between rounded-md border p-3">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      {url && url !== '#' ? (
-        isDownloadable ? (
-          <Button variant="outline" size="sm" asChild>
-            <a href={url} download target="_blank" rel="noopener noreferrer">
-              <Download className="mr-2 h-4 w-4" /> Download
-            </a>
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" asChild>
-            <a href={url} target="_blank" rel="noopener noreferrer">
-              <Eye className="mr-2 h-4 w-4" /> View
-            </a>
-          </Button>
-        )
-      ) : (
-        <span className="text-sm text-muted-foreground">Not Available</span>
-      )}
-    </div>
-  );
+  const DocumentOrActionItem = ({ label, url, actionLabel, icon, isDownloadable = false, actionType = 'link' }: { label: string; url?: string; actionLabel?: string; icon?: React.ElementType, isDownloadable?: boolean, actionType?: 'link' | 'button' }) => {
+    const IconComponent = icon;
+    return (
+        <div className="mb-3 flex items-center justify-between rounded-md border p-3">
+          <div className="flex items-center">
+            {IconComponent && <IconComponent className="mr-2 h-4 w-4 text-muted-foreground" />}
+            <span className="text-sm font-medium text-foreground">{label}</span>
+          </div>
+          {url && url !== '#' ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={url} download={isDownloadable} target="_blank" rel="noopener noreferrer">
+                {isDownloadable ? <Download className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />} {actionLabel || (isDownloadable ? 'Download' : 'View')}
+              </a>
+            </Button>
+          ) : actionType === 'button' && actionLabel ? (
+            <Button variant="outline" size="sm">
+              {IconComponent && <IconComponent className="mr-2 h-4 w-4" />} {actionLabel}
+            </Button>
+          ): (
+            <span className="text-sm text-muted-foreground">{actionLabel || 'Not Available'}</span>
+          )}
+        </div>
+    );
+  };
 
 
   return (
@@ -166,12 +169,12 @@ function ProfileDetailsLoader() {
         </CardHeader>
         <CardContent>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <DocumentItem label="ID Card" url={profile.idCardUrl} />
-                <DocumentItem label="Admission Letter" url={profile.admissionLetterUrl} />
-                <DocumentItem label="10th Mark Sheet" url={profile.marksheet10thUrl} />
-                <DocumentItem label="12th Mark Sheet" url={profile.marksheet12thUrl} />
-                <DocumentItem label="Migration Certificate" url={profile.migrationCertificateUrl} />
-                <DocumentItem label="Bonafide Certificate" url={profile.bonafideCertificateUrl} isDownloadable={true} />
+                <DocumentOrActionItem label="ID Card" url={profile.idCardUrl} actionLabel="View ID Card" />
+                <DocumentOrActionItem label="Admission Letter" url={profile.admissionLetterUrl} actionLabel="View Admission Letter" />
+                <DocumentOrActionItem label="10th Mark Sheet" url={profile.marksheet10thUrl} actionLabel="View 10th Mark Sheet" />
+                <DocumentOrActionItem label="12th Mark Sheet" url={profile.marksheet12thUrl} actionLabel="View 12th Mark Sheet" />
+                <DocumentOrActionItem label="Migration Certificate" url={profile.migrationCertificateUrl} actionLabel="View Migration Certificate" />
+                <DocumentOrActionItem label="Bonafide Certificate" url={profile.bonafideCertificateUrl} actionLabel="Download Bonafide" isDownloadable={true} />
             </div>
             <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
@@ -201,11 +204,37 @@ function ProfileDetailsLoader() {
                         alt="Uploaded Signature"
                         width={200}
                         height={80}
-                        className="rounded-md border bg-white object-contain p-1 shadow-sm" // bg-white for better signature visibility
+                        className="rounded-md border bg-white object-contain p-1 shadow-sm" 
                         data-ai-hint="signature"
                     />
                     ) : <p className="text-sm text-muted-foreground">N/A</p>}
                 </div>
+            </div>
+        </CardContent>
+      </Card>
+
+      {/* Exam Details Section */}
+      <Card className="shadow-lg">
+        <CardHeader>
+            <CardTitle className="flex items-center text-xl">
+                <ClipboardList className="mr-3 h-6 w-6 text-primary" />
+                Exam Details
+            </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <InfoItem label="Exam Registration" value={profile.examRegistrationStatus} />
+            <DocumentOrActionItem label="Admit Card" url={profile.admitCardUrl} actionLabel="Download Admit Card" isDownloadable={true} icon={Download}/>
+            <DocumentOrActionItem label="Internal Exam Timetable" url={profile.internalExamTimetableUrl} actionLabel="View Timetable" icon={Eye}/>
+            <DocumentOrActionItem label="External Exam Timetable" url={profile.externalExamTimetableUrl} actionLabel="View Timetable" icon={Eye}/>
+            <DocumentOrActionItem label="Results and Grade Cards" url={profile.resultsAndGradeCardsUrl} actionLabel="View Results" icon={Eye}/>
+            <div className="md:col-span-1"> {/* This div ensures the item takes full width on small screens and half on medium+ */}
+                <DocumentOrActionItem
+                    label={`Revaluation (${profile.revaluationRequestStatus || 'N/A'})`}
+                    url={profile.revaluationRequestStatus === 'None' || !profile.revaluationRequestLink ? profile.revaluationRequestLink : undefined} // Only provide URL if clickable
+                    actionLabel={profile.revaluationRequestStatus === 'None' ? 'Request Revaluation' : undefined} // Conditional label
+                    icon={Edit3} // Use a more appropriate icon like Edit3 or FilePlus
+                    actionType={profile.revaluationRequestStatus === 'None' ? 'link' : 'button'} // Make it a button if status is not "None" to show status
+                />
             </div>
         </CardContent>
       </Card>
@@ -226,6 +255,7 @@ export default function ProfilePage() {
                 <Skeleton className="h-64 w-full rounded-lg" />
                 <Skeleton className="h-72 w-full rounded-lg" />
                 <Skeleton className="h-80 w-full rounded-lg" />
+                <Skeleton className="h-72 w-full rounded-lg" />
             </div>
         }>
           <ProfileDetailsLoader />

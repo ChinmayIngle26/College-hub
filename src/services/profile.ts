@@ -43,6 +43,16 @@ export interface StudentProfile {
   uploadedPhotoUrl?: string;
   uploadedSignatureUrl?: string;
 
+  // 4. Exam Details
+  examRegistrationStatus?: string; // e.g., "Registered", "Not Registered"
+  admitCardUrl?: string;
+  internalExamTimetableUrl?: string;
+  externalExamTimetableUrl?: string;
+  resultsAndGradeCardsUrl?: string; // Link to results page or a document
+  revaluationRequestStatus?: string; // e.g., "None", "In Progress", "Completed"
+  revaluationRequestLink?: string; // Link to initiate a revaluation request
+
+
   // Internal/System fields (already present)
   role?: string;
 }
@@ -106,6 +116,15 @@ export async function getStudentProfile(uid: string): Promise<StudentProfile | n
         uploadedPhotoUrl: userData.uploadedPhotoUrl || 'https://placehold.co/100x100.png',
         uploadedSignatureUrl: userData.uploadedSignatureUrl || 'https://placehold.co/200x80.png',
 
+        // Exam Details
+        examRegistrationStatus: userData.examRegistrationStatus || 'Registered',
+        admitCardUrl: userData.admitCardUrl || '#download-admit-card',
+        internalExamTimetableUrl: userData.internalExamTimetableUrl || '#view-internal-timetable',
+        externalExamTimetableUrl: userData.externalExamTimetableUrl || '#view-external-timetable',
+        resultsAndGradeCardsUrl: userData.resultsAndGradeCardsUrl || '#view-results',
+        revaluationRequestStatus: userData.revaluationRequestStatus || 'None',
+        revaluationRequestLink: userData.revaluationRequestLink || '#request-revaluation',
+
         role: userData.role,
       };
     } else {
@@ -141,6 +160,13 @@ export async function getStudentProfile(uid: string): Promise<StudentProfile | n
         bonafideCertificateUrl: '#',
         uploadedPhotoUrl: 'https://placehold.co/100x100.png',
         uploadedSignatureUrl: 'https://placehold.co/200x80.png',
+        examRegistrationStatus: 'Not Registered',
+        admitCardUrl: '#',
+        internalExamTimetableUrl: '#',
+        externalExamTimetableUrl: '#',
+        resultsAndGradeCardsUrl: '#',
+        revaluationRequestStatus: 'N/A',
+        revaluationRequestLink: '#',
         role: 'student',
       };
     }
