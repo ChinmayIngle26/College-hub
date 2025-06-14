@@ -140,8 +140,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <Image
               src="/placeholder-logo.svg"
               alt="AISSMS Admin Logo"
-              width={isCollapsed ? 32 : 40}
-              height={isCollapsed ? 32 : 40}
+              width={isSidebarCollapsed ? 32 : 40}
+              height={isSidebarCollapsed ? 32 : 40}
               className={cn(isSidebarCollapsed ? "h-8 w-8" : "h-10 w-10")}
               data-ai-hint="college crest logo"
             />
@@ -190,7 +190,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
         <div className="mt-auto space-y-2 flex flex-col items-center">
             <div className={cn(isSidebarCollapsed ? "w-full flex justify-center" : "")}>
-                <ThemeToggle />
+                 {isSidebarCollapsed ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <ThemeToggle />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="bg-background text-foreground border-border">
+                            <p>Toggle theme</p>
+                        </TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <ThemeToggle />
+                )}
             </div>
            {user ? (
             <Tooltip>
@@ -257,3 +268,4 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     </TooltipProvider>
   );
 }
+
