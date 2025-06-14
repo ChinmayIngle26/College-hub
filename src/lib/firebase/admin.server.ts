@@ -1,7 +1,6 @@
 
 // src/lib/firebase/admin.server.ts
 // This file is INTENDED ONLY FOR NODE.JS RUNTIME ENVIRONMENTS.
-// It should NOT be imported by any code path that might run in an Edge Runtime.
 import * as admin from 'firebase-admin';
 import type { app as AdminAppType, auth as AdminAuthType, firestore as AdminFirestoreType, credential as AdminCredentialType } from 'firebase-admin';
 
@@ -11,15 +10,14 @@ let adminDb: AdminFirestoreType.Firestore | null = null;
 let adminInitializationError: Error | null = null;
 
 const currentEnvInfoNode = `SERVER_ONLY_ADMIN_SDK. NEXT_RUNTIME: ${process.env.NEXT_RUNTIME || 'undefined'}, VERCEL_ENV: ${process.env.VERCEL_ENV || 'undefined'}`;
-
 console.log(`[AdminServer] Initializing. ${currentEnvInfoNode}`);
 
 if (typeof globalThis.EdgeRuntime === 'string') {
     const criticalEdgeImportError = "CRITICAL_ERROR: admin.server.ts was imported in an Edge Runtime. This file is only for Node.js. Check import paths.";
     console.error(`[AdminServer] ${criticalEdgeImportError}`);
     adminInitializationError = new Error(criticalEdgeImportError);
-} else if (typeof admin.initializeApp !== 'function' || typeof admin.credential?.cert !== 'function') {
-    const integrityErrorMsg = "[AdminServer] CRITICAL: Firebase Admin SDK module integrity check failed. 'admin.initializeApp' or 'admin.credential.cert' is not a function. The 'firebase-admin' module might be corrupted or not loaded correctly.";
+} else if (typeof admin.initializeApp !== 'function') {
+    const integrityErrorMsg = "[AdminServer] CRITICAL: Firebase Admin SDK module integrity check failed. 'admin.initializeApp' is not a function. 'firebase-admin' module might be corrupted or not loaded correctly.";
     console.error(integrityErrorMsg);
     adminInitializationError = new Error(integrityErrorMsg);
 } else {
@@ -28,8 +26,6 @@ if (typeof globalThis.EdgeRuntime === 'string') {
         let credentials: AdminCredentialType.Credential | undefined = undefined;
         let credSource = "unknown";
         const serviceAccountJsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-        const serviceAccountPath = process.env.FIREBASE_ADMIN_SDK_PATH;
-        const googleAppCredsEnvVar = process.env.GOOGLE_APPLICATION_CREDENTIALS; // Path used by default init
 
         // Attempt 1: GOOGLE_APPLICATION_CREDENTIALS_JSON (environment variable string)
         if (serviceAccountJsonString) {
@@ -37,7 +33,7 @@ if (typeof globalThis.EdgeRuntime === 'string') {
             console.log(`[AdminServer] Attempting to use credentials from ${credSource}.`);
             try {
                 const serviceAccount = JSON.parse(serviceAccountJsonString);
-                if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
+                 if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
                     const validationError = new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON is missing required fields (project_id, private_key, client_email).");
                     console.error(`[AdminServer] Validation Error for ${credSource}: ${validationError.message}`);
                     adminInitializationError = validationError;
@@ -51,100 +47,72 @@ if (typeof globalThis.EdgeRuntime === 'string') {
                 adminInitializationError = new Error(parseErrorMsg);
             }
         } else {
-            console.log("[AdminServer] GOOGLE_APPLICATION_CREDENTIALS_JSON env var is NOT set.");
-        }
-
-        // Attempt 2: FIREBASE_ADMIN_SDK_PATH (environment variable file path)
-        if (!credentials && serviceAccountPath && !adminInitializationError) {
-            credSource = `FIREBASE_ADMIN_SDK_PATH (env var path: ${serviceAccountPath})`;
-            console.log(`[AdminServer] Attempting to use credentials from ${credSource}.`);
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const serviceAccountModule = require(serviceAccountPath);
-                if (!serviceAccountModule.project_id || !serviceAccountModule.private_key || !serviceAccountModule.client_email) {
-                    const validationError = new Error("Service account from FIREBASE_ADMIN_SDK_PATH is missing required fields (project_id, private_key, client_email).");
-                    console.error(`[AdminServer] Validation Error for ${credSource}: ${validationError.message}`);
-                    adminInitializationError = validationError;
-                } else {
-                    credentials = admin.credential.cert(serviceAccountModule);
-                    console.log(`[AdminServer] Successfully loaded credentials from ${credSource}. Project ID from file: ${serviceAccountModule.project_id}`);
-                }
-            } catch (e: any) {
-                const pathErrorMsg = `[AdminServer] Failed to load service account from ${credSource}. Ensure the path is correct and accessible. Error: ${e.message}.`;
-                console.error(pathErrorMsg, e);
-                adminInitializationError = new Error(pathErrorMsg);
-            }
-        } else if (!credentials && !adminInitializationError) {
-            console.log("[AdminServer] FIREBASE_ADMIN_SDK_PATH env var is NOT set or credentials already found/error occurred.");
+            console.log("[AdminServer] GOOGLE_APPLICATION_CREDENTIALS_JSON env var is NOT set. Will attempt Application Default Credentials (ADC).");
         }
 
         // Core Initialization Logic
         try {
-            if (!adminInitializationError) { // Only proceed if credential loading didn't set an error
+             if (!adminInitializationError) { // Only proceed if credential loading didn't set an error
                 const appName = `admin-server-app-${credentials ? 'explicit' : 'default'}`;
                 if (credentials) {
                     console.log(`[AdminServer] About to call admin.initializeApp with EXPLICIT credentials from: ${credSource}. AppName: ${appName}`);
                     adminApp = admin.initializeApp({ credential: credentials }, appName);
                 } else {
-                    credSource = `DEFAULT (Application Default Credentials - e.g., GOOGLE_APPLICATION_CREDENTIALS env var pointing to a file path: ${googleAppCredsEnvVar || 'not set'}, or managed environment)`;
-                    console.log(`[AdminServer] No explicit credentials were successfully loaded or provided. Attempting DEFAULT initialization (ADC). Source: ${credSource}. AppName: ${appName}`);
-                    adminApp = admin.initializeApp(undefined, appName); // Pass undefined for options to trigger ADC
+                    // Attempt Application Default Credentials
+                    credSource = `DEFAULT (Application Default Credentials - e.g., GOOGLE_APPLICATION_CREDENTIALS env var pointing to a file path, or managed environment)`;
+                    console.log(`[AdminServer] Attempting DEFAULT initialization (ADC). Source: ${credSource}. AppName: ${appName}`);
+                    adminApp = admin.initializeApp(undefined, appName);
                 }
 
-                if (adminApp && typeof adminApp.name === 'string') {
-                    console.log(`[AdminServer] Successfully initialized. App name: ${adminApp.name}`);
+                if (adminApp && typeof adminApp.name === 'string' && adminApp.options?.projectId) {
+                    console.log(`[AdminServer] Successfully initialized. App name: ${adminApp.name}, Project ID: ${adminApp.options.projectId}`);
                 } else {
-                    const initFailureMsg = `[AdminServer] admin.initializeApp call did NOT return a valid app object or failed silently (adminApp is falsy or has no name). Source: ${credSource}.`;
+                    const initFailureMsg = `[AdminServer] admin.initializeApp call did NOT return a valid app object, failed silently, or project ID is missing. App: ${JSON.stringify(adminApp)}. Source: ${credSource}.`;
                     console.error(initFailureMsg);
-                    adminInitializationError = new Error(initFailureMsg); // Set error if app is not valid
+                    adminInitializationError = new Error(initFailureMsg);
                 }
-
             } else {
                  console.warn(`[AdminServer] Skipping admin.initializeApp due to prior credential loading error: ${adminInitializationError.message}`);
             }
         } catch (error: any) {
             const criticalErrorMsg = "[AdminServer] CRITICAL: Firebase Admin SDK's admin.initializeApp() call ITSELF FAILED.";
             console.error(criticalErrorMsg,
+                `Credential Source Attempted: ${credSource}`,
                 `Underlying Error Message: "${error.message}"`,
                 `Error Code: ${error.code || 'N/A'}`,
-                "Full Error Object (JSON):", JSON.stringify(error, Object.getOwnPropertyNames(error)),
                 "Stack Trace:", error.stack
             );
-            adminInitializationError = error; // Capture the error from initializeApp
+            adminInitializationError = error;
         }
     } else {
-        const existingApp = admin.apps.find(app => app?.name?.startsWith('admin-server-app')) || admin.apps[0]; // Fallback to the first app if no named one
-        if (existingApp && typeof existingApp.name === 'string') {
+        const existingApp = admin.apps.find(app => app?.name?.startsWith('admin-server-app')) || admin.apps[0];
+        if (existingApp && typeof existingApp.name === 'string' && existingApp.options?.projectId) {
             adminApp = existingApp;
-            console.log(`[AdminServer] Firebase Admin SDK already initialized. Using existing app: ${adminApp.name}. Total apps: ${admin.apps.length}`);
-            adminInitializationError = null;
+            console.log(`[AdminServer] Firebase Admin SDK already initialized. Using existing app: ${adminApp.name}, Project ID: ${adminApp.options.projectId}. Total apps: ${admin.apps.length}`);
         } else {
-            const msg = "[AdminServer] admin.apps array is not empty, but no suitable app found (or app has no name). This is unexpected.";
+            const msg = `[AdminServer] admin.apps array is not empty, but no suitable app found or app is invalid (no name/projectId). Existing apps: ${admin.apps.map(a=>a?.name).join(', ')}. This is unexpected.`;
             console.error(msg);
             adminInitializationError = new Error(msg);
         }
     }
 
-    // Configure Auth and Firestore services only if adminApp is valid and no prior errors
-    if (adminApp && typeof adminApp.name === 'string' && !adminInitializationError) {
+    if (adminApp && !adminInitializationError) {
         try {
             adminAuth = admin.auth(adminApp);
             adminDb = admin.firestore(adminApp);
             console.log("[AdminServer] Firebase Auth and Firestore services configured from app:", adminApp.name);
         } catch (serviceError: any) {
             console.error(`[AdminServer] Error configuring Auth/Firestore services from app ${adminApp.name}: ${serviceError.message}`, serviceError);
-            adminInitializationError = serviceError;
+            adminInitializationError = serviceError; // Set error if service configuration fails
         }
     } else {
-        if (adminInitializationError) {
-            console.error(`[AdminServer] Final status: SDK NOT INITIALIZED or services not configured due to an earlier error. Captured error: "${adminInitializationError.message}"`);
-        } else if (!adminApp || typeof adminApp.name !== 'string') {
-            const indeterminateMsg = `[AdminServer] Final status: SDK state indeterminate (adminApp is falsy or has no name, but no explicit error reported after initialization block). App: ${JSON.stringify(adminApp)}. This implies a logic flaw or silent failure.`;
-            console.warn(indeterminateMsg);
-            adminInitializationError = new Error(indeterminateMsg);
+         if (adminInitializationError) {
+            console.error(`[AdminServer] Final status: SDK NOT INITIALIZED or services not configured due to an earlier error: "${adminInitializationError.message}"`);
+        } else {
+            console.error(`[AdminServer] Final status: SDK NOT INITIALIZED (adminApp is undefined or invalid) and no specific error was caught previously. This indicates a logic flow issue.`);
+            if(!adminInitializationError) adminInitializationError = new Error("Unknown error during Admin SDK initialization or service configuration.");
         }
     }
 }
 
 export { adminAuth, adminDb, adminApp, adminInitializationError };
-

@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase/client';
-import { collection, addDoc, getDocs, query, where, doc, getDoc, arrayUnion, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, arrayUnion, updateDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import type { Classroom, ClassroomStudent } from '@/types/classroom';
 import type { StudentProfile } from './profile';
 
@@ -118,3 +118,4 @@ export async function addStudentToClassroom(classroomId: string, studentId: stri
 
 // Placeholder for removeStudentFromClassroom if needed later
 // export async function removeStudentFromClassroom(classroomId: string, studentId: string): Promise<void> { ... }
+

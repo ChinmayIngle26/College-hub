@@ -5,92 +5,86 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Helper functions
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
     function isUser(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
     }
 
     function isAdmin() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Check if user is signed in and if their role is 'admin' in their user document
+      // Also allow a hardcoded admin email for initial setup or fallback.
+      return isSignedIn() && 
+             (request.auth.token.email == "admin@gmail.com" || getUserData(request.auth.uid).role == 'admin');
     }
 
     function isFaculty() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
+      return isSignedIn() && getUserData(request.auth.uid).role == 'faculty';
     }
 
     // Users collection
+    // - Users can read their own profile.
+    // - Users can update their own profile (specific fields might be restricted later for approval).
+    // - Admins can read, list, create, update any user profile.
+    // - Faculty can read student profiles (e.g., for classroom rosters, assuming studentIds are UIDs).
     match /users/{userId} {
-      // Allow users to read their own profile
-      allow read: if isUser(userId) || isAdmin() || isFaculty(); // Faculty might need to read student names for classroom
-      // Allow users to create their own profile document during signup (or admin can create)
-      allow create: if isAuthenticated() || isAdmin();
-      // Allow users to update their own profile, or admin to update any profile
-      allow update: if isUser(userId) || isAdmin();
-      // Admins can delete user documents (handle with care - might orphan auth user)
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && (isUser(userId) || isAdmin() || isFaculty());
+      allow list: if isAdmin() || isFaculty(); // Faculty might need to list users to add to classrooms (consider implications)
+      allow create: if isAdmin(); // Only admins can create user profiles (signup creates auth, admin creates Firestore doc)
+      allow update: if isUser(userId) || isAdmin(); // Users can update their own, admins can update any
+      allow delete: if isAdmin(); // Only admins can delete user profiles
     }
 
-    // System Settings
+    // System Settings collection
+    // - Publicly readable for application configuration (e.g., maintenance mode).
+    // - Only writable by admins.
     match /systemSettings/{docId} {
-      // Allow anyone to read system settings (e.g., for maintenance mode, app name)
-      allow read: if true;
-      // Only admins can write to system settings
+      allow read: if true; // Settings like maintenance mode, app name need to be readable by all
       allow write: if isAdmin();
     }
 
-    // Profile Change Requests
+    // Profile Change Requests collection
+    // - Students can create requests for their own profile changes.
+    // - Admins can read, list, and update (approve/deny) requests.
+    // - Students can read their own requests to see status.
     match /profileChangeRequests/{requestId} {
-      // Students can create requests (for themselves - checked in service logic by using request.auth.uid for userId field)
-      allow create: if isAuthenticated();
-      // Students can read their own requests, Admins/Faculty can read all
-      allow read, list: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isFaculty()); // isFaculty added for potential future use
-      // Only Admins can update (approve/deny) requests
-      allow update: if isAdmin();
-      // Disallow delete for now to keep records
-      allow delete: if false;
+      allow read: if isSignedIn() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow list: if isAdmin(); // Only admins list all requests
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId; // User can only create for themselves
+      allow update: if isAdmin(); // Only admins can update status (approve/deny)
+      allow delete: if false; // Keep records for history, or restrict to admin later
     }
-
+    
     // Classrooms collection
+    // - Faculty can create classrooms, where facultyId matches their UID.
+    // - Faculty can read/update/delete classrooms they own.
+    // - Students can read classrooms they are part of (if studentIds list is checked, or keep it simpler for now).
+    // - Admins can manage all classrooms.
     match /classrooms/{classroomId} {
-      // Faculty can create classrooms (facultyId will be set to their UID by service)
-      allow create: if isFaculty();
-      // Faculty can read classrooms they own or are a part of (if we add a members field later). Admin can read all.
-      allow read, list: if isFaculty() || isAdmin(); // Simplified: Faculty can list all for now, service filters
-      // Faculty can update classrooms they own. Admin can update all.
-      allow update: if (isFaculty() && resource.data.facultyId == request.auth.uid) || isAdmin();
-      // Faculty can delete classrooms they own. Admin can delete all.
-      allow delete: if (isFaculty() && resource.data.facultyId == request.auth.uid) || isAdmin();
+      allow read: if isSignedIn() && (isAdmin() || isFaculty()); // Faculty can read all, or refine later
+      allow list: if isSignedIn() && (isAdmin() || isFaculty()); // Faculty can list their own, Admin can list all
+      allow create: if isFaculty() && request.auth.uid == request.resource.data.facultyId;
+      allow update: if isAdmin() || (isFaculty() && request.resource.data.facultyId == request.auth.uid);
+      allow delete: if isAdmin() || (isFaculty() && request.resource.data.facultyId == request.auth.uid);
     }
 
     // Lecture Attendance collection
-    match /lectureAttendance/{attendanceId} {
-      // Faculty can create attendance records for their lectures/classrooms
-      allow create: if isFaculty();
-      // Students can read their own attendance. Faculty can read attendance they submitted or for their classrooms. Admins can read all.
-      allow read, list: if isAdmin() || 
-                       (isFaculty() && resource.data.facultyId == request.auth.uid) ||
-                       (isAuthenticated() && resource.data.studentId == request.auth.uid);
-      // Generally, attendance records are immutable once created. Updates might be restricted to admins for corrections.
-      allow update: if isAdmin();
-      allow delete: if isAdmin(); // Or if isFaculty() and owns the record
+    // - Faculty can create attendance records for classrooms they own.
+    // - Students can read their own attendance records.
+    // - Admins can read all attendance records.
+    match /lectureAttendance/{recordId} {
+      allow read: if isSignedIn() && (isAdmin() || request.resource.data.studentId == request.auth.uid || (isFaculty() && request.resource.data.facultyId == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || isFaculty()); // Admins can list all, faculty can list their own submissions.
+      allow create: if isFaculty() && request.auth.uid == request.resource.data.facultyId; // Faculty creates records for their students
+      allow update: if isAdmin() || (isFaculty() && request.resource.data.facultyId == request.auth.uid); // Faculty might need to correct an entry.
+      allow delete: if isAdmin(); // Admins can delete.
     }
 
-    // --- Collections from previous features (ensure they are still covered or remove if not needed) ---
-
-    // Example: Attendance Records (if this was the old student-submitted one, it might need adjustment or removal)
-    // If this is replaced by lectureAttendance, these rules might be obsolete.
-    // For now, assuming it might still be used or needs explicit new rules.
-    // match /attendanceRecords/{studentId}/records/{recordId} {
-    //   allow read, write: if isUser(studentId) || isAdmin();
-    // }
-
-    // Example: Grades (similar to attendance)
-    // match /grades/{studentId}/courses/{courseId} {
-    //  allow read: if isUser(studentId) || isAdmin();
-    //  allow write: if isAdmin(); // Only admins can write grades
-    // }
   }
 }
