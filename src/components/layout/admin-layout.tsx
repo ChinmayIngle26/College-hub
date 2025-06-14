@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   LogOut,
+  Edit, // Icon for Change Requests
   // School, // Replaced by Image
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ const adminNavigationItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/admin', label: 'User Management', icon: Users },
   { href: '/admin/settings', label: 'System Settings', icon: Settings },
+  { href: '/admin/requests', label: 'Change Requests', icon: Edit }, // New Item
 ];
 
 function deleteCookie(name: string) {
@@ -79,7 +81,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <nav className="space-y-2">
-              {[...Array(3)].map((_, i) => ( // 3 items for admin
+              {adminNavigationItems.map((_, i) => ( // Updated number of items
                 <div key={i} className="h-10 bg-muted rounded-md animate-pulse"></div>
               ))}
             </nav>
@@ -166,4 +168,3 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

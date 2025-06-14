@@ -4,77 +4,58 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if the user is an admin
+    // Helper function to check if a user is an admin
     function isAdmin() {
-      // Check if the user is authenticated and their role in the 'users' collection is 'admin'
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to check if a user is the owner of the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
 
     // Rules for the 'users' collection
     match /users/{userId} {
-      // Allow users to read their own data, and admins to read any user data
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      
-      // Allow admins to list all users (e.g., for user management panel)
-      allow list: if isAdmin();
-      
-      // Allow authenticated users to create their own user document during signup (role is student by default)
-      // Ensure studentId in document matches the UID if it's being set, or it's a new user doc.
-      allow create: if request.auth != null && request.auth.uid == userId &&
-                       request.resource.data.role == 'student' &&
-                       request.resource.data.email == request.auth.token.email &&
-                       request.resource.data.name is string &&
-                       request.resource.data.studentId is string && // Assuming studentId is a field in the user doc
-                       request.resource.data.major is string &&
-                       request.resource.data.parentEmail is string && request.resource.data.parentEmail.matches('.+@.+\\..+');
-
-
-      // Allow users to update their own mutable profile fields (e.g. name, major), and admins to update any.
-      // Prevent users from changing their own role or studentId after creation.
-      allow update: if request.auth != null && 
-                       ( (request.auth.uid == userId && 
-                          !(request.resource.data.role != resource.data.role) && // Role cannot be changed by user
-                          !(request.resource.data.studentId != resource.data.studentId) && // StudentId cannot be changed by user
-                          !(request.resource.data.email != resource.data.email) // Email cannot be changed by user
-                         ) || isAdmin() // Admins can update anything
-                       );
-      
-      // Only admins can delete user documents (Firestore part, Auth user needs separate deletion)
+      // Admins can read and write any user document
+      allow read, write: if isAdmin();
+      // Authenticated users can read their own profile
+      allow get: if request.auth != null && isOwner(userId);
+      // Authenticated users can create their own profile (e.g., on signup)
+      // This might be too open if signup process handles this. Adjust if needed.
+      allow create: if request.auth != null && isOwner(userId) && request.resource.data.role == 'student';
+      // Authenticated users can update *specific fields* of their own profile.
+      // More granular control will be needed for which fields are student-editable vs admin-only.
+      // For now, allow general update if owner, but this needs refinement for critical fields.
+      // A more secure approach would be to list allowed updatable fields.
+      allow update: if request.auth != null && isOwner(userId);
+      // Students should generally not be able to delete their own user document.
       allow delete: if isAdmin();
     }
 
-    // Rules for 'leaveApplications' collection
-    match /leaveApplications/{applicationId} {
-      // Student can read their own applications. Admin can read any.
-      allow read: if request.auth != null && (request.auth.uid == resource.data.studentId || isAdmin());
-
-      // Students can list their own applications (query must be secured by studentId). Admins can list all.
-      allow list: if request.auth != null; // Client query must filter by studentId == request.auth.uid
-
-      // Students can create their own leave applications.
-      // The server action uses Admin SDK for creation, so this rule primarily applies to hypothetical direct client writes.
-      allow create: if request.auth != null && 
-                       request.resource.data.studentId == request.auth.uid &&
-                       request.resource.data.studentName is string &&
-                       request.resource.data.parentEmail is string &&
-                       request.resource.data.leaveType is string &&
-                       request.resource.data.startDate is timestamp &&
-                       request.resource.data.endDate is timestamp &&
-                       request.resource.data.reason is string && request.resource.data.reason.size() >= 10 && request.resource.data.reason.size() <= 500 &&
-                       request.resource.data.status == 'Pending' &&
-                       request.resource.data.appliedAt == request.time; // Ensures server timestamp on creation
-
-      // Only admins can update (approve/reject) or delete leave applications.
-      allow update, delete: if isAdmin();
-    }
-
-    // Rules for 'systemSettings' collection
+    // Rules for the 'systemSettings' collection
     match /systemSettings/{docId} {
-      // Allow anyone (even unauthenticated users) to read system settings (e.g., for maintenance mode check)
-      allow read: if true;
-      
-      // Only admins can write/update system settings
+      // Anyone can read system settings (e.g., for maintenance mode, app name)
+      allow get: if true;
+      // Only admins can write to system settings
       allow write: if isAdmin();
     }
+
+    // Rules for the 'profileChangeRequests' collection
+    match /profileChangeRequests/{requestId} {
+      // Admins can read, write, create, and delete any request
+      allow read, write, create, delete: if isAdmin();
+      // Authenticated users can create their own requests
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Authenticated users can read their own requests
+      allow get: if request.auth != null && resource.data.userId == request.auth.uid;
+      // Users should not directly update or delete their requests once submitted, only admins.
+    }
+
+    // Add rules for other collections as needed (e.g., attendance, grades)
+    // Example:
+    // match /attendance/{studentId}/records/{recordId} {
+    //   allow read: if request.auth != null && (isOwner(studentId) || isAdmin());
+    //   allow write: if isAdmin(); // Or if a teacher role exists
+    // }
   }
 }
