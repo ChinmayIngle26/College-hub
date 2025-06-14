@@ -22,10 +22,6 @@ const inter = Inter({ // Initialize Inter font
 const DEFAULT_APP_NAME = 'College Hub';
 const DEFAULT_APP_DESCRIPTION = 'Your comprehensive college dashboard for students.';
 
-const defaultSettingsLayout: Pick<SystemSettings, 'applicationName'> = {
-  applicationName: DEFAULT_APP_NAME,
-};
-
 // Function to generate metadata dynamically using Admin SDK
 export async function generateMetadata(): Promise<Metadata> {
   let appName = DEFAULT_APP_NAME;
@@ -34,14 +30,15 @@ export async function generateMetadata(): Promise<Metadata> {
   console.log('[Layout:generateMetadata] Attempting to fetch settings using Admin SDK.');
   if (adminInitializationError) {
     console.warn(
-      `[Layout:generateMetadata] Firebase Admin SDK (admin.server.ts) failed to initialize. Using default metadata. Error: ${adminInitializationError.message}`
+      `[Layout:generateMetadata] Firebase Admin SDK (admin.server.ts) failed to initialize PRIOR to this check. Using default metadata. Error: ${adminInitializationError.message}`
     );
   } else if (!adminDb) {
     console.warn(
-      `[Layout:generateMetadata] Firebase Admin DB (from admin.server.ts) is not available. Using default metadata.`
+      `[Layout:generateMetadata] Firebase Admin DB (from admin.server.ts) is not available (is null). This likely means Admin SDK initialization failed. Using default metadata.`
     );
   } else {
     try {
+      console.log('[Layout:generateMetadata] AdminDb seems available, proceeding to fetch settings.');
       const settingsDocRef = adminDb.collection('systemSettings').doc('appConfiguration');
       const docSnap = await settingsDocRef.get();
 
@@ -56,12 +53,16 @@ export async function generateMetadata(): Promise<Metadata> {
       console.warn(
         `[Layout:generateMetadata] Error fetching system settings from Firestore (Admin SDK). Using default metadata. Error: ${error instanceof Error ? error.message : String(error)}`
       );
+      // This catch might also indicate that adminDb was valid but the call failed (e.g. permissions on service account for Firestore)
     }
   }
   
   appDescription = `Access your student information and services at ${appName}.`;
   return {
-    title: appName,
+    title: {
+        default: appName,
+        template: `%s | ${appName}` // Allows individual pages to set their own title part
+    },
     description: appDescription,
   };
 }
