@@ -6,56 +6,75 @@ service cloud.firestore {
 
     // Helper function to check if a user is an admin
     function isAdmin() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Helper function to check if a user is the owner of the document
+    // Helper function to check if the user is the owner of the document
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return request.auth != null && request.auth.uid == userId;
     }
 
-    // Rules for the 'users' collection
+    // Users collection
+    // - Users can read their own profile.
+    // - Users can update their own profile (certain fields, specific logic for updates might be in backend/Cloud Functions).
+    // - Admins can read, write, create, and delete any user profile.
     match /users/{userId} {
-      // Admins can read and write any user document
-      allow read, write: if isAdmin();
-      // Authenticated users can read their own profile
-      allow get: if request.auth != null && isOwner(userId);
-      // Authenticated users can create their own profile (e.g., on signup)
-      // This might be too open if signup process handles this. Adjust if needed.
-      allow create: if request.auth != null && isOwner(userId) && request.resource.data.role == 'student';
-      // Authenticated users can update *specific fields* of their own profile.
-      // More granular control will be needed for which fields are student-editable vs admin-only.
-      // For now, allow general update if owner, but this needs refinement for critical fields.
-      // A more secure approach would be to list allowed updatable fields.
-      allow update: if request.auth != null && isOwner(userId);
-      // Students should generally not be able to delete their own user document.
-      allow delete: if isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      // Allow students to update their own profiles.
+      // More granular control over which fields can be updated by whom might be
+      // enforced by backend logic or more specific rules if needed.
+      // For now, if a student is an owner, they can update their document.
+      // Critical fields like 'email' or 'role' change requests are handled separately.
+      allow update: if isOwner(userId) || isAdmin();
+      // Admins can create and delete user documents.
+      allow create, delete: if isAdmin();
+      // List access is typically controlled by query security rules or limited in client/server code.
+      // Admins can list users.
+      allow list: if isAdmin();
     }
 
-    // Rules for the 'systemSettings' collection
-    match /systemSettings/{docId} {
-      // Anyone can read system settings (e.g., for maintenance mode, app name)
-      allow get: if true;
-      // Only admins can write to system settings
+    // Profile Change Requests collection
+    // - Students can create requests for their own profile.
+    // - Admins can read, list, update (approve/deny) requests.
+    // - Deletion is disallowed to keep a record.
+    match /profileChangeRequests/{requestId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, list, update: if isAdmin();
+      allow delete: if false; // Keep a record of requests
+    }
+
+    // System Settings collection
+    // - Only admins can write to system settings.
+    // - All authenticated users can read system settings (e.g., for maintenance mode).
+    match /systemSettings/{settingsId} {
+      allow read: if request.auth != null; // Or allow unauthenticated reads if needed for pre-login checks
       allow write: if isAdmin();
     }
 
-    // Rules for the 'profileChangeRequests' collection
-    match /profileChangeRequests/{requestId} {
-      // Admins can read, write, create, and delete any request
-      allow read, write, create, delete: if isAdmin();
-      // Authenticated users can create their own requests
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      // Authenticated users can read their own requests
-      allow get: if request.auth != null && resource.data.userId == request.auth.uid;
-      // Users should not directly update or delete their requests once submitted, only admins.
-    }
+    // Rules for Leave Applications (REMOVED FEATURE - Keeping for historical reference if re-added)
+    // match /leaveApplications/{applicationId} {
+    //   // Students can create leave applications for themselves
+    //   allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    //   // Students can read their own leave applications
+    //   // Admins can read any leave application
+    //   allow read: if (request.auth != null && request.resource.data.userId == request.auth.uid) || isAdmin();
+    //   // Admins can update (approve/reject) leave applications
+    //   allow update: if isAdmin();
+    //   // Optionally, allow students to delete their PENDING applications, or disallow delete
+    //   allow delete: if false; // Or more specific rules for student deletion
+    // }
 
-    // Add rules for other collections as needed (e.g., attendance, grades)
-    // Example:
-    // match /attendance/{studentId}/records/{recordId} {
-    //   allow read: if request.auth != null && (isOwner(studentId) || isAdmin());
-    //   allow write: if isAdmin(); // Or if a teacher role exists
+    // Add rules for other collections as needed (e.g., attendance, grades, etc.)
+    // For now, assume these are read-only for students for their own data, and full access for admins.
+
+    // Example for a generic student-data collection:
+    // match /studentDataCollection/{docId} {
+    //   function isStudentOwner() {
+    //     return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.studentId == resource.data.studentId;
+    //   }
+    //   allow read: if isStudentOwner() || isAdmin();
+    //   allow write: if isAdmin(); // Typically students don't write directly to these collections from client
     // }
   }
 }
