@@ -1,15 +1,15 @@
 
-'use client'; // Make this a client component to use useAuth
+'use client'; 
 
 import { MainHeader } from '@/components/layout/main-header';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAttendanceRecords } from '@/services/attendance'; // This service is now updated
+import { getAttendanceRecords } from '@/services/attendance'; 
 import { useEffect, useState } from 'react'; 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context'; 
-import type { AttendanceRecord } from '@/services/attendance'; // This type might need adjustment if structure changed
+import type { AttendanceRecord } from '@/services/attendance'; 
 import { format, parseISO } from 'date-fns';
 
 function AttendanceTableLoader() {
@@ -25,9 +25,7 @@ function AttendanceTableLoader() {
                 setLoading(true);
                 setError(null);
                 try {
-                    // The getAttendanceRecords service should now fetch from 'lectureAttendance'
                     const fetchedRecords = await getAttendanceRecords(user.uid); 
-                    // The service already sorts by date desc, submittedAt desc
                     setRecords(fetchedRecords);
                 } catch (err) {
                     console.error("Failed to fetch attendance records:", err);
@@ -52,7 +50,6 @@ function AttendanceTableLoader() {
         return <p className="text-center text-destructive">{error}</p>;
     }
 
-
   return (
     <Card>
       <CardHeader>
@@ -64,17 +61,19 @@ function AttendanceTableLoader() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Lecture/Subject</TableHead>
+                <TableHead>Subject/Topic</TableHead>
                 <TableHead>Classroom</TableHead>
+                <TableHead>Faculty</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((record, index) => ( // Added index for key, ensure record.date + lectureName is unique if possible
+              {records.map((record, index) => ( 
                 <TableRow key={`${record.date}-${record.lectureName}-${index}`}>
-                  <TableCell>{format(parseISO(record.date), 'PP')}</TableCell> {/* Format date for display */}
+                  <TableCell>{record.date ? format(parseISO(record.date), 'PP') : 'Invalid Date'}</TableCell>
                   <TableCell>{record.lectureName || 'N/A'}</TableCell>
                   <TableCell>{record.classroomName || 'N/A'}</TableCell>
+                  <TableCell>{record.facultyName || 'N/A'}</TableCell>
                   <TableCell
                     className={cn(
                       'text-right font-medium',
@@ -95,7 +94,6 @@ function AttendanceTableLoader() {
   );
 }
 
-
 export default function AttendancePage() {
   return (
     <>
@@ -104,6 +102,11 @@ export default function AttendancePage() {
         <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
           Attendance
         </h2>
+        {/*
+          The student attendance view has NOT been fully updated for subject-wise/monthly/semester percentages.
+          It currently displays all lecture attendance records. A full redesign of this page
+          to meet the new detailed requirements is a separate, larger task.
+        */}
         <AttendanceTableLoader />
       </div>
     </>
