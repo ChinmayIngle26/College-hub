@@ -4,91 +4,85 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isStudent() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
-    }
-
-    function isFaculty() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
-    }
-
+    // Helper function to check if the user is an admin
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "admin@gmail.com" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    function isOwner(userId) {
-      return request.auth.uid == userId;
+    // Helper function to check if the user is a faculty member
+    function isFaculty() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
     }
-    
-    // Function to check if user is owner of a specific classroom document
+
+    // Helper function to check if the user is the owner of a classroom
     function isClassroomOwner(classroomId) {
-      let classroom = get(/databases/$(database)/documents/classrooms/$(classroomId)).data;
-      return request.auth.uid == classroom.ownerFacultyId;
+      // Ensure the classroom document exists before trying to access its data
+      let classroomDocPath = /databases/$(database)/documents/classrooms/$(classroomId);
+      return exists(classroomDocPath) && 
+             request.auth.uid == get(classroomDocPath).data.ownerFacultyId;
     }
     
-    // Function to check if user is either owner or invited faculty for a specific classroom document
+    // Helper function to check if the user is either the owner or an invited faculty for a specific classroom
     function isOwnerOrInvitedFaculty(classroomId) {
-      let classroomDoc = get(/databases/$(database)/documents/classrooms/$(classroomId));
-      // Check if classroom document exists and has data
-      if (!classroomDoc.exists()) {
-        return false;
-      }
-      let classroomData = classroomDoc.data;
-      // Ensure invitedFacultyIds is treated as a list, even if null or undefined
-      let invitedIds = classroomData.invitedFacultyIds != null ? classroomData.invitedFacultyIds : [];
-      return request.auth.uid == classroomData.ownerFacultyId || (request.auth.uid in invitedIds);
+      let classroomDocPath = /databases/$(database)/documents/classrooms/$(classroomId);
+      // First, ensure the document exists. If not, the function effectively returns false due to the AND.
+      return exists(classroomDocPath) &&
+             ( // Start a group for let bindings and further checks
+               let classroomData = get(classroomDocPath).data;
+               // Safely access invitedFacultyIds, defaulting to an empty list if null or not a list
+               let invitedIds = (classroomData.invitedFacultyIds != null && classroomData.invitedFacultyIds is list)
+                                ? classroomData.invitedFacultyIds
+                                : [];
+               // Check ownership or if UID is in the invited list
+               request.auth.uid == classroomData.ownerFacultyId || request.auth.uid in invitedIds
+             ); // End group
     }
 
-    // Users collection
+    // Rules for the 'users' collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin() || isFaculty()); // Faculty can read student profiles for classroom management
-      allow list: if isAdmin();
-      allow create: if isAuthenticated() || isAdmin(); // Sign up or admin creation
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow delete: if isAdmin();
+      allow read: if request.auth.uid == userId || isAdmin() || isFaculty(); // Faculty can read user details (e.g. for student lists)
+      allow create: if isAdmin(); // Only admins can create user profiles directly (signup creates a basic one)
+      allow update: if request.auth.uid == userId || isAdmin(); // Users can update their own profiles, admins can update any
+      allow delete: if isAdmin(); // Only admins can delete user profiles
     }
 
-    // System Settings
-    match /systemSettings/appConfiguration {
-      allow read: if true; // Allow all users to read system settings
+    // Rules for 'systemSettings' collection
+    match /systemSettings/{docId} {
+      allow read: if true; // Publicly readable (e.g., for app name, maintenance mode on client)
       allow write: if isAdmin(); // Only admins can change system settings
     }
     
-    // Profile Change Requests
+    // Rules for 'profileChangeRequests' collection
     match /profileChangeRequests/{requestId} {
-      allow read, list: if isAdmin(); // Only admins can see requests
-      allow create: if isStudent() && request.auth.uid == request.resource.data.userId; // Students can create their own
-      allow update: if isAdmin(); // Admins can update (approve/deny)
-      allow delete: if isAdmin(); 
+      allow create: if request.auth.uid == request.resource.data.userId; // Students can create their own requests
+      allow read, list: if isAdmin(); // Admins can read/list all requests
+      allow update: if isAdmin(); // Admins can update (approve/deny) requests
+      allow delete: if isAdmin(); // Admins can delete requests
     }
-    
-    // Classrooms Collection
+
+    // Rules for 'classrooms' collection
     match /classrooms/{classroomId} {
-      allow read: if isFaculty() && isOwnerOrInvitedFaculty(classroomId); // Owner or invited faculty can read.
-      allow list: if isFaculty(); // Faculty can list classrooms they are part of (client filters this further)
-      allow create: if isFaculty() && request.auth.uid == request.resource.data.ownerFacultyId; // Creator must be owner
-      allow update: if isFaculty() && isClassroomOwner(classroomId); // Only owner can update (e.g., invite others)
-      allow delete: if isFaculty() && isClassroomOwner(classroomId); // Only owner can delete
+      allow create: if isFaculty() && request.auth.uid == request.resource.data.ownerFacultyId;
+      // For reading, user must be faculty AND (owner OR invited to this specific classroom)
+      allow read: if isFaculty() && isOwnerOrInvitedFaculty(classroomId);
+      // For updating/deleting, user must be faculty AND the owner of this specific classroom
+      allow update: if isFaculty() && isClassroomOwner(classroomId); 
+      allow delete: if isFaculty() && isClassroomOwner(classroomId);
     }
     
-    // Lecture Attendance Collection
+    // Rules for 'lectureAttendance' collection
+    // One document per student, per lecture instance.
     match /lectureAttendance/{recordId} {
-      allow read: if (isStudent() && request.auth.uid == resource.data.studentId) || 
-                       (isFaculty() && isOwnerOrInvitedFaculty(resource.data.classroomId));
-                       // Student can read their own, faculty can read for their classrooms.
-      allow list: if isFaculty(); // Faculty can list broadly, client filters.
       allow create: if isFaculty() && 
-                       request.auth.uid == request.resource.data.facultyId && 
-                       isOwnerOrInvitedFaculty(request.resource.data.classroomId); // Faculty submitting must be the one in record and associated with class.
-      allow update, delete: if false; // Generally, attendance records are immutable once created.
+                       isOwnerOrInvitedFaculty(request.resource.data.classroomId) &&
+                       request.auth.uid == request.resource.data.facultyId; // Faculty submitting must be the one in the record.
+      allow read: if request.auth.uid == resource.data.studentId || // Student can read their own attendance
+                     (isFaculty() && isOwnerOrInvitedFaculty(resource.data.classroomId)); // Associated faculty can read records for their classroom
+      // Listing lectureAttendance should be done via secured queries on the client/server that filter by studentId or classroomId+faculty association
+      allow list: if isFaculty(); // Broad list, ensure client queries are appropriately filtered for security
+      allow update, delete: if false; // Generally, attendance records should be immutable once created, or handled by admin/specific logic
     }
   }
 }
